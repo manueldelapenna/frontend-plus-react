@@ -109,7 +109,7 @@ const SideMenu: React.FC<SideMenuProps> = () => {
     <Box sx={{ width: 240, flexShrink: 0 }}>
       <Toolbar>
         <Typography variant="h6" noWrap component="div">
-          {clientContext.clientSetup?.appName || 'FrontendPlus App'}
+          {'FrontendPlus App'}
         </Typography>
       </Toolbar>
       <Divider />
@@ -132,7 +132,7 @@ const SideMenu: React.FC<SideMenuProps> = () => {
           </ListItemButton>
         </ListItem>
         <Divider />
-        {clientContext.menu.menu.map((menuItem: MenuInfoBase) => (
+        {clientContext.menu.map((menuItem: MenuInfoBase) => (
           <MenuListItem key={menuItem.name} item={menuItem} level={1} />
         ))}
       </List>

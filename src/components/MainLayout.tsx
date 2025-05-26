@@ -31,9 +31,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
                 <Toolbar>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}> {/* flexGrow: 1 empuja el resto a la derecha */}
-                        {clientContext.clientSetup?.appName || 'Mi Aplicación'}
+                        {'Mi Aplicación'}
                     </Typography>
-                    
+                    <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}> {/* mr para un margen a la derecha */}
+                       {clientContext.username}
+                    </Typography>
                     {/* Botón de Logout */}
                     {/* Puedes usar Button para un texto visible o IconButton para solo el icono */}
                     <Button
@@ -49,7 +51,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <IconButton
                         color="inherit"
                         aria-label="logout"
-                        onClick={handleLogout}
+                        onClick={logout}
                     >
                         <LogoutIcon />
                     </IconButton>

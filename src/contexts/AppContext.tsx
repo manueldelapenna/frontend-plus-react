@@ -33,26 +33,15 @@ interface AppProviderProps {
 }
 
 export interface ClientContext {
-    clientSetup: any;
-    menu: {menu:MenuInfoBase[]};
-    tableStructures: any;
-    procedures: Array<{ id: string; name: string; path: string }>;
+    menu: MenuInfoBase[],
+    procedures: Array<{ id: string; name: string; path: string }>,
+    tableStructures: any,
+    config:any,
+    useragent:any,
+    username: string,
 }
 
 export const loadClientContextData = async (): Promise<ClientContext> => {
-    // ... (Tu función loadClientContextData es correcta, no necesita cambios aquí)
-    const responseMenu = await fetchApi('/api/menu', {method: 'GET'});
-    if (!responseMenu.ok) {
-        const errorData = await responseMenu.text();
-        throw new Error(errorData || 'Error al obtener el menú');
-    }
-    const menu = await responseMenu.json();
-    const responseProcedures = await fetchApi('/api/procedures', {method: 'GET'});
-    if (!responseProcedures.ok) { // <-- Corrección: usar responseProcedures.ok aquí
-        const errorData = await responseProcedures.text();
-        throw new Error(errorData || 'Error al obtener procedimientos');
-    }
-    const procedures = await responseProcedures.json();
     const responseTables = await fetchApi('/api/tables', {method: 'GET'});
     if (!responseTables.ok) { // <-- Corrección: usar responseTables.ok aquí
         const errorData = await responseTables.text();
@@ -67,9 +56,7 @@ export const loadClientContextData = async (): Promise<ClientContext> => {
     const clientSetup = await setupResponse.json();
 
     const newClientContext: ClientContext = {
-        clientSetup,
-        menu,
-        procedures,
+        ...clientSetup,
         tableStructures
     };
     return newClientContext;
