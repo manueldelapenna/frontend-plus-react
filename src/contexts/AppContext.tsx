@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react'; // ¡Asegúrate de importar useMemo!
 import { fetchApi } from '../utils/fetchApi';
 import { useNavigate } from 'react-router-dom';
-import { MenuInfoBase } from "backend-plus";
-
+import { MenuInfoBase, ProcedureDef, AppConfigClientSetup } from "backend-plus";
+import { Details } from 'express-useragent';
 
 // Define la interfaz para el contexto de autenticación
 interface AppContextType {
@@ -34,10 +34,11 @@ interface AppProviderProps {
 
 export interface ClientContext {
     menu: MenuInfoBase[],
-    procedures: Array<{ id: string; name: string; path: string }>,
+    procedure: {[key:string]:ProcedureDef},
+    procedures: ProcedureDef[],
     tableStructures: any,
-    config:any,
-    useragent:any,
+    config:AppConfigClientSetup,
+    useragent:Details,
     username: string,
 }
 

@@ -9,7 +9,7 @@ const HomePage: React.FC = () => {
     return (
         <Box sx={{ p: 3 }}>
             <Typography variant="h4" component="h1" gutterBottom>
-                Bienvenido a tu aplicación
+                {`Bienvenido/a ${clientContext?.username}`}
             </Typography>
             <Typography variant="body1">
                 Usa el menú lateral para navegar por las diferentes secciones.

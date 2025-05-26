@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "backend-plus": "^2.0.9",
+    "@types/express-useragent": "^1.0.5",
     "types.d.ts": "^0.6.22"
   },
   "scripts": {
