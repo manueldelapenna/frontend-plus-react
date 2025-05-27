@@ -1,19 +1,18 @@
 // src/components/MainLayout.tsx
-import React, { ReactNode, useState } from 'react'; // Importa useState
+import React, { ReactNode, useState } from 'react';
 import {
     Box, AppBar, Toolbar, Typography, Button, Drawer, CssBaseline,
-    IconButton
+    IconButton, useTheme, useMediaQuery // <-- Importa useTheme y useMediaQuery
 } from '@mui/material';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate } from 'react-router-dom';
 import LogoutIcon from '@mui/icons-material/Logout';
-import MenuIcon from '@mui/icons-material/Menu'; // Importa el icono de menú
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'; // Importa el icono para cerrar
+import MenuIcon from '@mui/icons-material/Menu';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SideMenu from './SideMenu';
 import useLogout from '../hooks/useLogout';
 
-// Define el ancho del drawer
-const drawerWidth = 240; // Puedes ajustar este valor
+const drawerWidth = 240;
 
 interface MainLayoutProps {
     children: ReactNode;
@@ -23,6 +22,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const { clientContext } = useApp();
     const logout = useLogout();
     const [open, setOpen] = useState(false);
+
+    // Obtener el tema de Material-UI
+    const theme = useTheme();
+    // Usar useMediaQuery para determinar el tamaño de la pantalla (xs, sm, md, etc.)
+    // Esto nos permite acceder a la altura de la AppBar en diferentes breakpoints
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Por ejemplo, considera 'sm' como el punto de corte móvil
 
     const handleDrawerOpen = () => {
         setOpen(true);
@@ -52,7 +57,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         duration: theme.transitions.duration.leavingScreen,
                     }),
                     ...(open && {
-                        // Si el drawer está abierto, ajusta el ancho del AppBar
                         width: `calc(100% - ${drawerWidth}px)`,
                         marginLeft: `${drawerWidth}px`,
                         transition: (theme) => theme.transitions.create(['width', 'margin'], {
@@ -70,7 +74,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         edge="start"
                         sx={{
                             marginRight: 5,
-                            ...(open && { display: 'none' }), // Oculta el icono de menú si el drawer está abierto
+                            ...(open && { display: 'none' }),
                         }}
                     >
                         <MenuIcon />
@@ -91,7 +95,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 </Toolbar>
             </AppBar>
             <Drawer
-                variant="persistent" // Para que empuje el contenido
+                variant="persistent"
                 anchor="left"
                 open={open}
                 sx={{
@@ -100,26 +104,34 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
-                        overflowX: 'hidden', // Evita scroll horizontal
-                        overflowY: 'auto', // Permite scroll vertical interno si el contenido es largo
+                        overflowX: 'hidden',
+                        overflowY: 'auto', // Mantener scroll vertical
                     },
                 }}
             >
-               <Toolbar sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    px: 1,
-                    minHeight: '64px', // Alinea con el AppBar
-                }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', px: 1 }}>
-                        <IconButton onClick={handleDrawerClose}>
-                            <ChevronLeftIcon />
-                        </IconButton>
-                    </Box>
+                {/* --- Ajuste aquí para alinear el botón de cerrar --- */}
+                <Toolbar
+                    sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        px: 1,
+                        // Usa la altura de la Toolbar del AppBar directamente desde el tema
+                        minHeight: theme.mixins.toolbar.minHeight, // Altura base
+                        // Si quieres una altura diferente para móviles (ej. AppBar más pequeña), puedes ajustarlo aquí
+                        // minHeight: {
+                        //     xs: theme.mixins.toolbar.minHeight, // Altura para extra-small
+                        //     sm: theme.mixins.toolbar.minHeight, // Altura para small
+                        // },
+                        // O usar la función de breakpoints directamente:
+                        // minHeight: isMobile ? 56 : 64, // Ejemplo: 56px para móviles, 64px para escritorio
+                    }}
+                >
+                    <IconButton onClick={handleDrawerClose}>
+                        <ChevronLeftIcon />
+                    </IconButton>
                 </Toolbar>
-                {/* Aquí renderizas tu SideMenu */}
-                <SideMenu onMenuItemClick={handleDrawerClose} /> {/* Pasa la función para cerrar el menú */}
+                <SideMenu onMenuItemClick={handleDrawerClose} />
             </Drawer>
             <Box
                 component="main"
@@ -130,18 +142,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         easing: theme.transitions.easing.sharp,
                         duration: theme.transitions.duration.leavingScreen,
                     }),
-                    marginLeft: `-${drawerWidth}px`, // El menú se superpone si está cerrado
+                    marginLeft: `-${drawerWidth}px`,
                     ...(open && {
                         transition: (theme) => theme.transitions.create('margin', {
                             easing: theme.transitions.easing.easeOut,
                             duration: theme.transitions.duration.enteringScreen,
                         }),
-                        marginLeft: 0, // Mueve el contenido para que el menú esté visible
+                        marginLeft: 0,
                     }),
-                    width: '100%', // Asegura que el contenido ocupe el ancho completo cuando se "contrae"
+                    width: '100%',
                 }}
             >
-                <Toolbar /> {/* Para empujar el contenido principal debajo del AppBar */}
+                <Toolbar />
                 {children}
             </Box>
         </Box>
