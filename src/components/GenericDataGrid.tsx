@@ -465,7 +465,7 @@ const GenericDataGrid: React.FC = () => {
 
     // --- 8. RENDERIZADO PRINCIPAL DEL COMPONENTE (JSX) ---
     return (
-        <Box sx={{ p: 3, width: '100%', boxSizing: 'border-box' }}>
+        <Box sx={{ p: 3, boxSizing: 'border-box' }}>
             <Typography variant="h5" gutterBottom>{tableDefinition.title || tableDefinition.name}</Typography>
 
             {allow?.insert && (tableDefinition.editable !== false) && (
@@ -481,7 +481,9 @@ const GenericDataGrid: React.FC = () => {
                 </Button>
             )}
 
-            <TableContainer component={Paper} sx={{ display: 'block' }}>
+            <TableContainer component={Paper} sx={{ 
+                overflowX: 'visible'
+            }}>
                 <Table sx={{ minWidth: 1500 }} aria-label={`${name} data grid`}>
                     <TableHead>
                         <TableRow>

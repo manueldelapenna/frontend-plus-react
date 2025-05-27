@@ -150,7 +150,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         }),
                         marginLeft: 0,
                     }),
-                    width: '100%',
+                    minWidth: 0, // Permite que el contenido interno determine el ancho mínimo si es necesario
+                    flexShrink: 0, // Evita que este Box se encoja cuando su contenido sea más grande
+                    overflowX: 'auto', // Esto permitirá el scroll horizontal en este contenedor si el contenido se desborda
                 }}
             >
                 <Toolbar />
