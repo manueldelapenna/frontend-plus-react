@@ -131,7 +131,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <ChevronLeftIcon />
                     </IconButton>
                 </Toolbar>
-                <SideMenu onMenuItemClick={handleDrawerClose} />
+                <SideMenu/>
             </Drawer>
             <Box
                 component="main"

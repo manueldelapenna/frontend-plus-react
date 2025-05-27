@@ -13,16 +13,16 @@ import { MenuInfoBase, MenuInfoProc, MenuInfoTable, MenuInfoWScreen, MenuInfoMen
 
 
 interface SideMenuProps {
-    onMenuItemClick?: () => void; // Nueva prop: un callback para cerrar el menú
+    // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop si el menú siempre queda abierto
 }
 
 interface MenuListItemProps {
     item: MenuInfoBase;
     level: number;
-    onMenuItemClick?: () => void; // También se pasa a los ítems del sub-menú
+    // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop
 }
 
-const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClick }) => {
+const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemClick */ }) => { // Remueve onMenuItemClick
     const navigate = useNavigate();
     const location = useLocation();
     const [open, setOpen] = React.useState(false);
@@ -31,7 +31,6 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
         if (item.menuType === "menu") {
             setOpen(!open);
         } else {
-            // Si es un elemento final (tabla o procedimiento), navega y luego cierra el menú
             if (item.menuType === "table") {
                 const tableName = (item as MenuInfoTable).table || item.name;
                 let path = `/table/${tableName}`;
@@ -47,10 +46,10 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
             } else if (item.menuType === "proc") {
                 navigate(`/procedures/${item.name}`);
             }
-            // Llama al callback para cerrar el menú después de navegar
-            if (onMenuItemClick) {
-                onMenuItemClick();
-            }
+            // Eliminamos la llamada al callback para cerrar el menú aquí
+            // if (onMenuItemClick) {
+            //     onMenuItemClick();
+            // }
         }
     };
 
@@ -80,7 +79,8 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
                 <Collapse in={open} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
                         {(item as MenuInfoMenu).menuContent.map((subItem) => (
-                            <MenuListItem key={subItem.name} item={subItem} level={level + 1} onMenuItemClick={onMenuItemClick} />
+                            // Remueve onMenuItemClick aquí también
+                            <MenuListItem key={subItem.name} item={subItem} level={level + 1} /* onMenuItemClick={onMenuItemClick} */ />
                         ))}
                     </List>
                 </Collapse>
@@ -90,15 +90,16 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
 };
 
 
-const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => { // Recibe la prop aquí
+const SideMenu: React.FC<SideMenuProps> = ({ /* onMenuItemClick */ }) => { // Remueve onMenuItemClick aquí
     const { clientContext } = useApp();
     const navigate = useNavigate();
 
     const handleHomeClick = () => {
         navigate('/home');
-        if (onMenuItemClick) {
-            onMenuItemClick(); // Cierra el menú al ir a Home
-        }
+        // Eliminamos la llamada al callback para cerrar el menú aquí
+        // if (onMenuItemClick) {
+        //     onMenuItemClick();
+        // }
     };
 
     if (!clientContext || !clientContext.menu) {
@@ -110,17 +111,11 @@ const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => { // Recibe l
     }
 
     return (
-        <Box sx={{ width: '100%', flexShrink: 0 }}> {/* Box con width: 100% para que ocupe el ancho del drawer */}
-            {/* El Toolbar ya lo manejamos en MainLayout, así que aquí no es necesario */}
-            {/* <Toolbar>
-                <Typography variant="h6" noWrap component="div">
-                    {'FrontendPlus App'}
-                </Typography>
-            </Toolbar> */}
+        <Box sx={{ width: '100%', flexShrink: 0 }}>
             <Divider />
             <List>
                 <ListItem disablePadding>
-                    <ListItemButton onClick={handleHomeClick}> {/* Usa la función con el callback */}
+                    <ListItemButton onClick={handleHomeClick}>
                         <ListItemIcon>
                             <HomeIcon />
                         </ListItemIcon>
@@ -129,8 +124,8 @@ const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => { // Recibe l
                 </ListItem>
                 <Divider />
                 {clientContext.menu.map((menuItem: MenuInfoBase) => (
-                    // Pasa la función a cada MenuListItem
-                    <MenuListItem key={menuItem.name} item={menuItem} level={1} onMenuItemClick={onMenuItemClick} />
+                    // Remueve onMenuItemClick aquí
+                    <MenuListItem key={menuItem.name} item={menuItem} level={1} /* onMenuItemClick={onMenuItemClick} */ />
                 ))}
             </List>
         </Box>
