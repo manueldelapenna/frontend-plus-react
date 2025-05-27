@@ -1,37 +1,37 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  TextField, Button, Checkbox, CircularProgress, Alert, AlertTitle, Box, Typography,
-  IconButton, InputAdornment, Menu, MenuItem, FormControl, InputLabel, Select
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+    TextField, Button, Checkbox, CircularProgress, Alert, AlertTitle, Box, Typography,
+    IconButton, InputAdornment, Menu, MenuItem, FormControl, InputLabel, Select
 } from '@mui/material';
 import {
-  Add as AddIcon, Save as SaveIcon, Delete as DeleteIcon, Edit as EditIcon, Cancel as CancelIcon,
-  Search as SearchIcon, FilterList as FilterListIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon
+    Add as AddIcon, Save as SaveIcon, Delete as DeleteIcon, Edit as EditIcon, Cancel as CancelIcon,
+    Search as SearchIcon, FilterList as FilterListIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon
 } from '@mui/icons-material';
 import { fetchApi } from '../utils/fetchApi';
+// Asegúrate de que FieldDefinition y TableDefinition se importen correctamente.
+// Si vienen de tu backend-plus lib, está bien. Si las definiste en 'types/client-context-types', cámbialo.
 import { FieldDefinition, TableDefinition } from "backend-plus";
 import { useParams } from 'react-router-dom';
-import { useApp } from '../contexts/AppContext';
+// import { useApp } from '../contexts/AppContext'; // Ya no es necesario si sacaste tableStructures
 
-interface TableManagementParams {
-    tableName: string;
-}
-
+// Helper para obtener valores de Primary Key
 const getPrimaryKeyValues = (row: any, primaryKeyFields: string[]): string => {
-  if (!primaryKeyFields || primaryKeyFields.length === 0) {
-    return row._tempId || JSON.stringify(row);
-  }
-  return primaryKeyFields.map(key => String(row[key])).join('__');
+    if (!primaryKeyFields || primaryKeyFields.length === 0) {
+        return row._tempId || JSON.stringify(row);
+    }
+    return primaryKeyFields.map(key => String(row[key])).join('__');
 };
 
 const GenericDataGrid: React.FC = () => {
-    const { tableName } = useParams();
-    const { clientContext } = useApp();
-    const actualTableName: string = tableName!;
+    const { tableName } = useParams<{ tableName: string }>();
 
-    // --- 1. TODOS LOS HOOKS DE ESTADO DEBEN IR AQUÍ ---
-    const [data, setData] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    // --- 1. HOOKS DE ESTADO ---
+    const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
+    const [tableData, setTableData] = useState<any[]>([]);
+    
+    const [isLoadingStructure, setIsLoadingStructure] = useState<boolean>(true);
+    const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
     const [editingRowId, setEditingRowId] = useState<string | null>(null);
@@ -41,64 +41,122 @@ const GenericDataGrid: React.FC = () => {
     const [columnFilters, setColumnFilters] = useState<{[key: string]: string}>({});
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
-    // const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null); // No usado, puedes quitarlo
-    // const [currentFilterColumn, setCurrentFilterColumn] = useState<string | null>(null); // No usado, puedes quitarlo
 
-    // tableDefinition debe ser una constante aquí, no puede ser condicional
-    const tableDefinition: TableDefinition | undefined = clientContext?.tableStructures[actualTableName] as TableDefinition;
-
-    // --- 2. HOOKS CON EFECTOS Y MEMOIZACIÓN (useCallback, useMemo, useEffect) ---
-
-    // fetchData: Depende de tableDefinition, actualTableName
-    const fetchData = useCallback(async () => {
-        if (!tableDefinition || !tableDefinition.name) {
+    // --- 2. EFECTO PARA CARGAR LA ESTRUCTURA DE LA TABLA (`tableDefinition`) ---
+    useEffect(() => {
+        if (!tableName) {
+            setError("Nombre de tabla no especificado en la URL.");
+            setIsLoadingStructure(false);
             return;
         }
-        setLoading(true);
+
+        const fetchDefinition = async () => {
+            setIsLoadingStructure(true);
+            setError(null);
+            setTableDefinition(null);
+            setTableData([]);
+
+            try {
+                const formData = new URLSearchParams({
+                    table: tableName,
+                });
+                const response = await fetchApi(`/table_structure`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+                if (response.ok) {
+                    const rawResponseText = await response.text();
+                    const data = JSON.parse(rawResponseText.replace(/^--\n/, '')); 
+                    setTableDefinition(data);
+                    setError(null);
+                } else {
+                    const errorText = await response.text();
+                    setError(`Error al cargar la estructura de la tabla '${tableName}': ${response.status} - ${errorText}`);
+                    setTableDefinition(null);
+                }
+            } catch (err) {
+                console.error('Error de red o inesperado al cargar la estructura:', err);
+                setError(`Error de red o inesperado al cargar la estructura de la tabla '${tableName}'.`);
+                setTableDefinition(null);
+            } finally {
+                setIsLoadingStructure(false);
+            }
+        };
+
+        fetchDefinition();
+    }, [tableName]);
+
+    // --- 3. FUNCIONES DE CARGA DE DATOS (`WorkspaceData`) ---
+    const fetchData = useCallback(async () => {
+        if (!tableDefinition || !tableName) {
+            setTableData([]);
+            return;
+        }
+
+        setIsLoadingData(true);
         setError(null);
+
         try {
             const formData = new URLSearchParams({
-                table: actualTableName,
+                table: tableName,
             });
-            const response = await fetchApi(`/table_data`,{
-                method:'POST',
+            const response = await fetchApi(`/table_data`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
                 body: formData
             });
-            var data = JSON.parse((await response.text()).replace(/^--\n/, ''));
-            setData(data)
+            
+            const rawResponseText = await response.text();
+            const data = JSON.parse(rawResponseText.replace(/^--\n/, '')); 
+            setTableData(data);
         } catch (err: any) {
             setError(`Error al cargar datos de ${tableDefinition.name}: ${err.message}`);
+            setTableData([]);
         } finally {
-            setLoading(false);
+            setIsLoadingData(false);
         }
-    }, [actualTableName, tableDefinition]);
+    }, [tableName, tableDefinition]);
 
+    // --- 4. EFECTO PARA DISPARAR LA CARGA DE DATOS DESPUÉS DE LA ESTRUCTURA ---
     useEffect(() => {
-        if (tableDefinition) {
+        if (tableDefinition && !isLoadingStructure && !error) {
             fetchData();
         }
-    }, [fetchData, tableDefinition]);
+        if (!tableDefinition && !isLoadingStructure) {
+            setTableData([]);
+        }
+    }, [fetchData, tableDefinition, isLoadingStructure, error]);
 
-    // visibleFields: Depende de tableDefinition
+
+    // --- 5. HOOKS CON MEMOIZACIÓN (visibleFields, processedData) ---
+    // Colocamos la desestructuración de tableDefinition AQUÍ,
+    // después de que se haya asegurado que no es null por los `if (error) / if (isLoadingStructure) / if (!tableDefinition)`
+    // y antes de cualquier `useMemo` o función que la necesite.
+    const name = tableDefinition?.name;
+    const fields = tableDefinition?.fields || [];
+    const primaryKey = tableDefinition?.primaryKey || [];
+    const allow = tableDefinition?.allow;
+
+
     const visibleFields = useMemo(() => {
         if (!tableDefinition) return [];
         return tableDefinition.fields.filter(field => field.visible !== false && field.clientSide === undefined);
     }, [tableDefinition]);
 
-    // processedData: Depende de data, columnFilters, sortColumn, sortDirection, visibleFields, tableDefinition
     const processedData = useMemo(() => {
-        if (!tableDefinition) return [];
+        if (!tableDefinition || !tableData) return [];
 
-        let currentData = [...data];
+        let currentData = [...tableData];
 
         currentData = currentData.filter(row => {
             return visibleFields.every(field => {
                 const filterTerm = columnFilters[field.name];
                 if (!filterTerm) return true;
-
                 const value = String(row[field.name] ?? '').toLowerCase();
                 return value.includes(filterTerm.toLowerCase());
             });
@@ -108,27 +166,25 @@ const GenericDataGrid: React.FC = () => {
             currentData.sort((a, b) => {
                 const aValue = a[sortColumn];
                 const bValue = b[sortColumn];
-
                 if (aValue === null || aValue === undefined) return sortDirection === 'asc' ? -1 : 1;
                 if (bValue === null || bValue === undefined) return sortDirection === 'asc' ? 1 : -1;
-
                 if (typeof aValue === 'number' && typeof bValue === 'number') {
                     return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
                 }
                 const aStr = String(aValue).toLowerCase();
                 const bStr = String(bValue).toLowerCase();
-
                 if (aStr < bStr) return sortDirection === 'asc' ? -1 : 1;
                 if (aStr > bStr) return sortDirection === 'asc' ? 1 : -1;
                 return 0;
             });
         }
         return currentData;
-    }, [data, columnFilters, sortColumn, sortDirection, visibleFields, tableDefinition]);
+    }, [tableData, columnFilters, sortColumn, sortDirection, visibleFields, tableDefinition]);
 
 
-    // --- 3. FUNCIONES QUE SE USAN EN EL JSX ---
-    // (Ahora sí, todas las funciones que se llaman en el renderizado principal van aquí)
+    // --- 6. FUNCIONES QUE SE USAN EN EL JSX ---
+    // Estas funciones ahora pueden acceder a `name`, `fields`, `primaryKey`, `allow`
+    // directamente porque fueron desestructuradas arriba, en el scope del componente.
 
     const handleEditClick = (row: any) => {
         if (editingRowId) {
@@ -144,7 +200,7 @@ const GenericDataGrid: React.FC = () => {
         setEditingRowId(null);
         setEditedRowData(null);
         setIsNewRow(false);
-        setData(prevData => prevData.filter(row => !(row._tempId && getPrimaryKeyValues(row, primaryKey) === editingRowId)));
+        setTableData(prevData => prevData.filter(row => !(isNewRow && row._tempId && getPrimaryKeyValues(row, primaryKey) === editingRowId)));
     };
 
     const handleChange = (fieldName: string, value: any) => {
@@ -152,8 +208,12 @@ const GenericDataGrid: React.FC = () => {
     };
 
     const handleSaveClick = async () => {
+        if (!tableDefinition) {
+            setError("No se puede guardar: la definición de la tabla no está disponible.");
+            return;
+        }
         setError(null);
-        setLoading(true);
+        setIsLoadingData(true);
         const pkValues = getPrimaryKeyValues(editedRowData, primaryKey);
 
         try {
@@ -161,12 +221,11 @@ const GenericDataGrid: React.FC = () => {
                 const newRecord = { ...editedRowData };
                 delete newRecord._tempId;
 
-                //@ts-ignore
-                const response = await fetchApi<any>(`${process.env.REACT_APP_BACKEND_URL}/api/data/${name}`, {
+                const response = await fetchApi(`${process.env.REACT_APP_BACKEND_URL}/api/data/${name}`, {
                     method: 'POST',
                     body: newRecord,
                 });
-                setData(prevData => prevData.map(row =>
+                setTableData(prevData => prevData.map(row =>
                     (row._tempId && getPrimaryKeyValues(row, primaryKey) === pkValues) ? response : row
                 ));
             } else {
@@ -178,40 +237,46 @@ const GenericDataGrid: React.FC = () => {
                     method: 'PUT',
                     body: updatePayload,
                 });
-                setData(prevData => prevData.map(row =>
+                setTableData(prevData => prevData.map(row =>
                     getPrimaryKeyValues(row, primaryKey) === pkValues ? { ...editedRowData } : row
                 ));
             }
             setEditingRowId(null);
             setEditedRowData(null);
             setIsNewRow(false);
+            // fetchData(); 
         } catch (err: any) {
             setError(`Error al guardar datos: ${err.message}`);
         } finally {
-            setLoading(false);
+            setIsLoadingData(false);
         }
     };
 
     const handleDeleteClick = async (row: any) => {
+        if (!tableDefinition) {
+            setError("No se puede eliminar: la definición de la tabla no está disponible.");
+            return;
+        }
         if (!window.confirm(`¿Estás seguro de que quieres eliminar este registro?`)) {
             return;
         }
         setError(null);
-        setLoading(true);
+        setIsLoadingData(true);
         const pkValues = getPrimaryKeyValues(row, primaryKey);
         try {
             await fetchApi(`${process.env.REACT_APP_BACKEND_URL}/api/data/${name}/${encodeURIComponent(pkValues)}`, {
                 method: 'DELETE',
             });
-            setData(prevData => prevData.filter(r => getPrimaryKeyValues(r, primaryKey) !== pkValues));
+            setTableData(prevData => prevData.filter(r => getPrimaryKeyValues(r, primaryKey) !== pkValues));
         } catch (err: any) {
             setError(`Error al eliminar registro: ${err.message}`);
         } finally {
-            setLoading(false);
+            setIsLoadingData(false);
         }
     };
 
     const handleAddRow = () => {
+        if (!tableDefinition) return;
         if (editingRowId) {
             alert("Por favor, guarda o cancela la fila actual antes de añadir una nueva.");
             return;
@@ -232,7 +297,7 @@ const GenericDataGrid: React.FC = () => {
                 if (field.typeName === 'boolean') newRow[field.name] = false;
             }
         });
-        setData(prevData => [newRow, ...prevData]);
+        setTableData((prevData:any) => [newRow, ...prevData]);
         setEditingRowId(newRow._tempId);
         setEditedRowData(newRow);
         setIsNewRow(true);
@@ -261,10 +326,11 @@ const GenericDataGrid: React.FC = () => {
     };
 
     const renderCell = (row: any, field: FieldDefinition) => {
+        if (!tableDefinition) return null; 
+
         const isEditing = getPrimaryKeyValues(row, primaryKey);
         const value = isEditing === editingRowId ? editedRowData?.[field.name] : row[field.name];
 
-        // Determinar si la celda es editable
         const canEditCell = isEditing === editingRowId && field.editable !== false && tableDefinition.editable !== false && field.clientSide === undefined;
 
         if (!canEditCell) {
@@ -355,16 +421,7 @@ const GenericDataGrid: React.FC = () => {
     };
 
 
-    // --- 4. RETURN CONDICIONALES PARA ESTADOS DE CARGA/ERROR ---
-    // Estos van después de todas las declaraciones de Hooks y funciones.
-    if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-                <CircularProgress />
-                <Typography ml={2}>Cargando datos...</Typography>
-            </Box>
-        );
-    }
+    // --- 7. RETURN CONDICIONALES PARA ESTADOS DE CARGA/ERROR ---
 
     if (error) {
         return (
@@ -375,12 +432,38 @@ const GenericDataGrid: React.FC = () => {
         );
     }
 
-    // Asegurarse de que tableDefinition está disponible aquí antes de desestructurarlo
-    // Esto ya lo hicimos arriba con el 'if (!tableDefinition) return ...', así que aquí es seguro.
-    const { name, fields, primaryKey, allow } = tableDefinition;
+    if (isLoadingStructure) {
+        return (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                <CircularProgress />
+                <Typography ml={2}>Cargando estructura de tabla "{tableName}"...</Typography>
+            </Box>
+        );
+    }
 
+    if (!tableDefinition) {
+        return (
+            <Alert severity="warning">
+                <AlertTitle>Advertencia</AlertTitle>
+                No se pudo cargar la definición de la tabla "{tableName}". Verifique la URL o la configuración del backend.
+            </Alert>
+        );
+    }
+    
+    // Ahora que tableDefinition está disponible y sin errores, podemos usar name, fields, etc.
+    // **¡YA NO NECESITAS ESTA LÍNEA AQUÍ PORQUE LAS VARIABLES FUERON DECLARADAS ARRIBA!**
+    // const { name, fields, primaryKey, allow } = tableDefinition; // ELIMINAR O COMENTAR ESTA LÍNEA
 
-    // --- 5. RENDERIZADO PRINCIPAL DEL COMPONENTE (JSX) ---
+    if (isLoadingData) {
+        return (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                <CircularProgress />
+                <Typography ml={2}>Cargando datos para "{tableDefinition.title || tableDefinition.name}"...</Typography>
+            </Box>
+        );
+    }
+
+    // --- 8. RENDERIZADO PRINCIPAL DEL COMPONENTE (JSX) ---
     return (
         <Box sx={{ p: 3, width: '100%', boxSizing: 'border-box' }}>
             <Typography variant="h5" gutterBottom>{tableDefinition.title || tableDefinition.name}</Typography>
@@ -443,7 +526,7 @@ const GenericDataGrid: React.FC = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {processedData.length === 0 && !loading && !error && (
+                        {processedData.length === 0 && !isLoadingData && !error && (
                             <TableRow>
                                 <TableCell colSpan={visibleFields.length + 1} align="center">
                                     No hay datos para mostrar con los filtros aplicados.

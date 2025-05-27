@@ -36,19 +36,12 @@ export interface ClientContext {
     menu: MenuInfoBase[],
     procedure: {[key:string]:ProcedureDef},
     procedures: ProcedureDef[],
-    tableStructures: any,
     config:AppConfigClientSetup,
     useragent:Details,
     username: string,
 }
 
 export const loadClientContextData = async (): Promise<ClientContext> => {
-    const responseTables = await fetchApi('/api/tables', {method: 'GET'});
-    if (!responseTables.ok) { // <-- Corrección: usar responseTables.ok aquí
-        const errorData = await responseTables.text();
-        throw new Error(errorData || 'Error al obtener tablas');
-    }
-    const tableStructures = await responseTables.json();
     const setupResponse = await fetchApi('/client-setup', {method: 'GET'});
     if (!setupResponse.ok) { // <-- Corrección: verificar si setupResponse es ok
         const errorData = await setupResponse.text();
@@ -58,7 +51,6 @@ export const loadClientContextData = async (): Promise<ClientContext> => {
 
     const newClientContext: ClientContext = {
         ...clientSetup,
-        tableStructures
     };
     return newClientContext;
 };
