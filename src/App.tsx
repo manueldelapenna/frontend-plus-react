@@ -9,6 +9,7 @@ import { AppProvider , useApp } from './contexts/AppContext';
 import GenericDataGrid from './components/GenericDataGrid';
 import HomePage from './pages/HomePage'; // Importa HomePage si la quieres como ruta principal
 import LogoutPage from './pages/LogoutPage';
+import ProcedureForm from './components/ProcedureForm';
 
 function App() {
     const { isLoggedIn } = useApp(); // Obtiene el estado de login del contexto
@@ -22,7 +23,7 @@ function App() {
             <Route path="/home" element={isLoggedIn ? <MainLayout><HomePage /></MainLayout> : <Navigate to="/login" replace />}/>
             {/* Rutas protegidas para tablas y procedimientos, dentro de MainLayout */} 
             <Route path="/table/:tableName" element={isLoggedIn ? <MainLayout><GenericDataGrid /></MainLayout> : <Navigate to="/login" replace />}/>
-            <Route path="/procedures/:procedureName" element={isLoggedIn ? <MainLayout><div>Página de Procedimiento: {':procedureName'}</div></MainLayout> : <Navigate to="/login" replace />}/>
+            <Route path="/procedures/:procedureName" element={isLoggedIn ? <MainLayout><ProcedureForm/></MainLayout> : <Navigate to="/login" replace />}/>
             
             {/* Ruta por defecto para cualquier otra URL: redirige a la ruta principal si logueado, a /login si no */}
             <Route path="*" element={isLoggedIn ? <Navigate to="/" replace /> : <Navigate to="/login" replace />}/>
