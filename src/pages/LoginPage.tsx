@@ -45,16 +45,13 @@ const LoginPage = () => {
         setIsSubmitting(true);
         setLoginError(null); // Limpia cualquier error anterior
         try {
-            const formData = new URLSearchParams({
+            const body = new URLSearchParams({
                 username: data.username,
                 password: data.password
             });
             const loginResponse = await fetchApi('/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: formData,
+                body,
             });
             if (!loginResponse.url.endsWith('/menu')){
                 throw new Error('Error al iniciar sesión');

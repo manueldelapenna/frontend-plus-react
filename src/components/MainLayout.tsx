@@ -80,7 +80,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <MenuIcon />
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                        {'Mi Aplicación'}
+                        {clientContext.config.title}
                     </Typography>
                     <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}>
                         {clientContext.username}

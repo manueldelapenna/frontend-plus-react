@@ -24,7 +24,6 @@ const SessionExpiredMessage: React.FC = () => {
   const handleClose = () => {
     setShowSessionExpiredMessage(false);
     setIsLoggedIn(false);
-    localStorage.removeItem('client-setup');
     navigate('/login', { replace: true });
   };
 

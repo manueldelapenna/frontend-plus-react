@@ -68,7 +68,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     // es crucial para que useEffect no se dispare innecesariamente.
     const checkSession = useCallback(async () => {
         try {
-            const response = await fetchApi('/keep-alive.json', {});
+            const response = await fetchApi('/keep-alive.json', {method:'GET'});
             if (response.ok) {
                 setIsLoggedIn(true);
                 setShowSessionExpiredMessage(false);
