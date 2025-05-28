@@ -96,8 +96,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             setClientContext(null);
             if (!showSessionExpiredMessage && window.location.pathname !== '/login') {
                 setShowSessionExpiredMessage(true);
-            } else if (window.location.pathname === '/login') {
-                setShowSessionExpiredMessage(false);
             }
         }
     }, [navigate, showSessionExpiredMessage, setIsLoggedIn, setShowSessionExpiredMessage, clientContext]); // Dependencias de useCallback
