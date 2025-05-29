@@ -70,14 +70,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        onClick={handleDrawerOpen}
+                        onClick={open?handleDrawerClose:handleDrawerOpen}
                         edge="start"
                         sx={{
                             marginRight: 5,
-                            ...(open && { display: 'none' }),
                         }}
                     >
-                        <MenuIcon />
+                        {open?<ChevronLeftIcon/>:<MenuIcon/>}
+                       
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
                         {clientContext.config.title}
@@ -127,9 +127,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         // minHeight: isMobile ? 56 : 64, // Ejemplo: 56px para móviles, 64px para escritorio
                     }}
                 >
-                    <IconButton onClick={handleDrawerClose}>
-                        <ChevronLeftIcon />
-                    </IconButton>
                 </Toolbar>
                 <SideMenu/>
             </Drawer>
