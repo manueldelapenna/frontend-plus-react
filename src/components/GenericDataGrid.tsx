@@ -439,8 +439,8 @@ const GenericDataGrid: React.FC = () => {
     }
 
     return (
-        <Box sx={{ p: 3, boxSizing: 'border-box' }}>
-            <Typography variant="h5" gutterBottom>{tableDefinition.title || tableDefinition.name}</Typography>
+        <Box sx={{ boxSizing: 'border-box' }}>
+            <Typography variant="h5" gutterBottom>{(tableDefinition.title || tableDefinition.name).replace(/_/g,' ')}</Typography>
 
             {allow?.insert && (tableDefinition.editable !== false) && (
                 <Button
