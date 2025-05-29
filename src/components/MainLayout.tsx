@@ -73,14 +73,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         onClick={open?handleDrawerClose:handleDrawerOpen}
                         edge="start"
                         sx={{
-                            marginRight: 5,
+                            marginRight: 2.2,
                         }}
                     >
                         {open?<ChevronLeftIcon/>:<MenuIcon/>}
                        
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                        {clientContext.config.title}
+                        {open?'':clientContext.config.title}
                     </Typography>
                     <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}>
                         {clientContext.username}
@@ -116,6 +116,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         alignItems: 'center',
                         justifyContent: 'flex-end',
                         px: 1,
+                        fontSize: '1.3rem',
                         // Usa la altura de la Toolbar del AppBar directamente desde el tema
                         minHeight: theme.mixins.toolbar.minHeight, // Altura base
                         // Si quieres una altura diferente para móviles (ej. AppBar más pequeña), puedes ajustarlo aquí
@@ -127,6 +128,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         // minHeight: isMobile ? 56 : 64, // Ejemplo: 56px para móviles, 64px para escritorio
                     }}
                 >
+                    {open?clientContext.config.title:''}
                 </Toolbar>
                 <SideMenu/>
             </Drawer>
