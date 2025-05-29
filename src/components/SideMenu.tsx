@@ -5,12 +5,12 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import FolderIcon from '@mui/icons-material/Folder';
+import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from '@mui/icons-material/Home';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { MenuInfoBase, MenuInfoProc, MenuInfoTable, MenuInfoWScreen, MenuInfoMenu } from "backend-plus";
-import { blue, green, grey, orange } from '@mui/material/colors';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow'; 
+import { blue, orange, teal } from '@mui/material/colors';
 
 interface SideMenuProps {
     // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop si el menú siempre queda abierto
@@ -59,8 +59,8 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
                 // Color azul oscuro para tablas, sugiriendo datos y estructura
                 return <TableChartIcon sx={{ color: blue[700] }} />; 
             case "proc": 
-                // Ícono de "play" para ejecución/proceso, color verde oscuro para acción/éxito
-                return <PlayArrowIcon sx={{ color: green[700] }} />; 
+                // Ícono de "herramienta" para procesos/acciones con parámetros, color índigo oscuro
+                return <DnsIcon sx={{ color: teal[700] }} />; 
             case "menu": 
                 // Ícono de carpeta con un color naranja sutil
                 return <FolderIcon sx={{ color: orange[800] }} />; 
