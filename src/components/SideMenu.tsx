@@ -4,13 +4,13 @@ import { List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Di
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import TableChartIcon from '@mui/icons-material/TableChart';
-import FunctionsIcon from '@mui/icons-material/Functions';
 import FolderIcon from '@mui/icons-material/Folder';
 import HomeIcon from '@mui/icons-material/Home';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { MenuInfoBase, MenuInfoProc, MenuInfoTable, MenuInfoWScreen, MenuInfoMenu } from "backend-plus";
-
+import { blue, green, grey, orange } from '@mui/material/colors';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'; 
 
 interface SideMenuProps {
     // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop si el menú siempre queda abierto
@@ -55,9 +55,15 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
 
     const getIcon = (item: MenuInfoBase) => {
         switch (item.menuType) {
-            case "table": return <TableChartIcon />;
-            case "proc": return <FunctionsIcon />;
-            case "menu": return <FolderIcon />;
+            case "table": 
+                // Color azul oscuro para tablas, sugiriendo datos y estructura
+                return <TableChartIcon sx={{ color: blue[700] }} />; 
+            case "proc": 
+                // Ícono de "play" para ejecución/proceso, color verde oscuro para acción/éxito
+                return <PlayArrowIcon sx={{ color: green[700] }} />; 
+            case "menu": 
+                // Ícono de carpeta con un color naranja sutil
+                return <FolderIcon sx={{ color: orange[800] }} />; 
             default: return null;
         }
     };
@@ -69,7 +75,7 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
     return (
         <>
             <ListItemButton onClick={handleClick} sx={{ pl: level * 2 }}>
-                <ListItemIcon>
+                <ListItemIcon sx={{minWidth:'38px'}}>
                     {getIcon(item)}
                 </ListItemIcon>
                 <ListItemText primary={item.label || item.name} />
