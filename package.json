@@ -27,6 +27,7 @@
     "json4all": "^1.4.0",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
+    "react-data-grid": "^7.0.0-beta.55",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.56.3",
     "react-router-dom": "^7.6.0",
@@ -41,7 +42,7 @@
     "css-select": "^5.1.0",
     "svgo": "^3.3.2",
     "@svgr/plugin-svgo": "^8.1.0",
-    "@svgr/webpack": "^8.1.0"    
+    "@svgr/webpack": "^8.1.0"
   },
   "devDependencies": {
     "@types/express-useragent": "^1.0.5",
