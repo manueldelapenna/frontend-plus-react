@@ -2,7 +2,7 @@
 import React, { ReactNode, useState } from 'react';
 import {
     Box, AppBar, Toolbar, Typography, Button, Drawer, CssBaseline,
-    IconButton, useTheme, useMediaQuery // <-- Importa useTheme y useMediaQuery
+    IconButton, useTheme, useMediaQuery
 } from '@mui/material';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate } from 'react-router-dom';
@@ -23,11 +23,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const logout = useLogout();
     const [open, setOpen] = useState(false);
 
-    // Obtener el tema de Material-UI
     const theme = useTheme();
-    // Usar useMediaQuery para determinar el tamaño de la pantalla (xs, sm, md, etc.)
-    // Esto nos permite acceder a la altura de la AppBar en diferentes breakpoints
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Por ejemplo, considera 'sm' como el punto de corte móvil
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
     const handleDrawerOpen = () => {
         setOpen(true);
@@ -45,8 +42,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         );
     }
 
+    // Calcular la altura de la AppBar dinámicamente para el offset del contenido
+    const appBarOffset = theme.mixins.toolbar;
+
     return (
-        <Box sx={{ display: 'flex' }}>
+        // El Box raíz ocupa el 100% del alto del viewport y usa flex para su contenido
+        <Box sx={{ display: 'flex', height: '100vh' }}>
             <CssBaseline />
             <AppBar
                 position="fixed"
@@ -70,17 +71,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        onClick={open?handleDrawerClose:handleDrawerOpen}
+                        onClick={open ? handleDrawerClose : handleDrawerOpen}
                         edge="start"
                         sx={{
                             marginRight: 2.2,
                         }}
                     >
-                        {open?<ChevronLeftIcon/>:<MenuIcon/>}
-                       
+                        {open ? <ChevronLeftIcon /> : <MenuIcon />}
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                        {open?'':clientContext.config.title}
+                        {open ? '' : clientContext.config.title}
                     </Typography>
                     <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}>
                         {clientContext.username}
@@ -105,11 +105,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         width: drawerWidth,
                         boxSizing: 'border-box',
                         overflowX: 'hidden',
-                        overflowY: 'auto', // Mantener scroll vertical
+                        overflowY: 'auto',
                     },
                 }}
             >
-                {/* --- Ajuste aquí para alinear el botón de cerrar --- */}
                 <Toolbar
                     sx={{
                         display: 'flex',
@@ -117,26 +116,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         justifyContent: 'flex-end',
                         px: 1,
                         fontSize: '1.3rem',
-                        // Usa la altura de la Toolbar del AppBar directamente desde el tema
-                        minHeight: theme.mixins.toolbar.minHeight, // Altura base
-                        // Si quieres una altura diferente para móviles (ej. AppBar más pequeña), puedes ajustarlo aquí
-                        // minHeight: {
-                        //     xs: theme.mixins.toolbar.minHeight, // Altura para extra-small
-                        //     sm: theme.mixins.toolbar.minHeight, // Altura para small
-                        // },
-                        // O usar la función de breakpoints directamente:
-                        // minHeight: isMobile ? 56 : 64, // Ejemplo: 56px para móviles, 64px para escritorio
+                        minHeight: theme.mixins.toolbar.minHeight,
                     }}
                 >
-                    {open?clientContext.config.title:''}
+                    {open ? clientContext.config.title : ''}
                 </Toolbar>
-                <SideMenu/>
+                <SideMenu />
             </Drawer>
             <Box
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    p: 3,
+                    // Eliminamos el padding de aquí para evitar desbordamientos
+                    // p: 3, 
                     transition: (theme) => theme.transitions.create('margin', {
                         easing: theme.transitions.easing.sharp,
                         duration: theme.transitions.duration.leavingScreen,
@@ -149,12 +141,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         }),
                         marginLeft: 0,
                     }),
-                    minWidth: 0, // Permite que el contenido interno determine el ancho mínimo si es necesario
-                    flexShrink: 0, // Evita que este Box se encoja cuando su contenido sea más grande
-                    overflowX: 'auto', // Esto permitirá el scroll horizontal en este contenedor si el contenido se desborda
+                    minWidth: 0,
+                    flexShrink: 0,
+                    paddingTop: `${appBarOffset.minHeight}px`,
+                    height: '100%',
+                    boxSizing: 'border-box',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    // MODIFICACIÓN CLAVE: Ancho condicional para el contenido principal
+                    width: open ? `calc(100% - ${drawerWidth}px)` : '100%',
                 }}
             >
-                <Toolbar />
                 {children}
             </Box>
         </Box>

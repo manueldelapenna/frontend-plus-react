@@ -1,8 +1,7 @@
 // src/store/routerSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-// Asegúrate de que 'RouterState' tenga la palabra clave 'export'
-export interface RouterState { // <--- ¡Añade 'export' aquí!
+export interface RouterState {
     currentPath: string;
     previousPath: string | null;
   }

@@ -1,9 +1,8 @@
 import * as JSON4all from "json4all";
-import { store } from '../store'; // Asegúrate de que esta ruta sea correcta
+import { store } from '../store';
 
 export const cambiarGuionesBajosPorEspacios = (texto:string)=>texto.replace(/_/g,' ');
 export const quitarGuionesBajos = (texto:string)=>texto.replace(/_/g,'');
-
 
 const getAppPrefix = () => {
     const state = store.getState();
