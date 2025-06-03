@@ -11,7 +11,7 @@ import {
 import { fetchApi } from '../utils/fetchApi';
 import { FieldDefinition, TableDefinition } from "backend-plus";
 import { useParams } from 'react-router-dom';
-import { quitarGuionesBajos } from '../utils/functions';
+import { cambiarGuionesBajosPorEspacios } from '../utils/functions';
 
 const getPrimaryKeyValues = (row: any, primaryKeyFields: string[]): string => {
     if (!primaryKeyFields || primaryKeyFields.length === 0) {
@@ -441,7 +441,7 @@ const GenericDataGrid: React.FC = () => {
 
     return (
         <Box sx={{ boxSizing: 'border-box' }}>
-            <Typography variant="h5" gutterBottom>{quitarGuionesBajos(tableDefinition.title || tableDefinition.name)}</Typography>
+            <Typography variant="h5" gutterBottom>{cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}</Typography>
 
             {allow?.insert && (tableDefinition.editable !== false) && (
                 <Button

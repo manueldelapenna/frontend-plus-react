@@ -22,7 +22,7 @@ import {
   Divider
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
-import { quitarGuionesBajos } from '../utils/functions';
+import { cambiarGuionesBajosPorEspacios } from '../utils/functions';
 
 const ProcedureForm: React.FC = () => {
   const { procedureName } = useParams<{ procedureName: string }>();
@@ -68,6 +68,8 @@ const ProcedureForm: React.FC = () => {
 
   React.useEffect(() => {
     if (procedure) {
+      setError(null);
+      setSuccessMessage(null);
       const newInitialValues: Record<string, any> = {};
       procedure.parameters.forEach(param => {
         if (param.defaultValue !== undefined) {
@@ -343,7 +345,7 @@ const ProcedureForm: React.FC = () => {
       fontSize: '0.8rem' // Ajuste global sutil para el tamaño de la letra base del Box
     }}>
       <Typography variant="h5" component="h2" gutterBottom align="left">
-        {quitarGuionesBajos(procedure.proceedLabel || procedure.action)}
+        {cambiarGuionesBajosPorEspacios(procedure.proceedLabel || procedure.action)}
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{error}</Alert>}

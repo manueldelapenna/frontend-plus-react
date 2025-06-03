@@ -1,18 +1,22 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react'; // ¡Asegúrate de importar useMemo!
+// src/contexts/AppContext.tsx
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { fetchApi } from '../utils/fetchApi';
 import { useNavigate } from 'react-router-dom';
-import { MenuInfoBase, ProcedureDef, AppConfigClientSetup } from "backend-plus";
-import { Details } from 'express-useragent';
 
-// Define la interfaz para el contexto de autenticación
+// Importa los hooks de Redux y las acciones de tu slice
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState, AppDispatch } from '../store'; // Asegúrate de que la ruta sea correcta
+import { fetchClientContext, clearClientContext } from '../store/clientContextSlice'; // Importa el thunk y la acción
+
+// --- ¡ATENCIÓN! La interfaz AppContextType cambia ---
+// Ahora no contiene clientContext ni setClientContext directamente,
+// ya que se gestionan por Redux.
 interface AppContextType {
     isLoggedIn: boolean;
     setIsLoggedIn: (loggedIn: boolean) => void;
     checkSession: () => Promise<void>;
     showSessionExpiredMessage: boolean;
     setShowSessionExpiredMessage: (show: boolean) => void;
-    clientContext: ClientContext | null;
-    setClientContext: (data: ClientContext | null) => void;
 }
 
 // Crea el contexto con un valor por defecto que se sobrescribirá
@@ -22,83 +26,69 @@ const AuthContext = createContext<AppContextType | undefined>(undefined);
 export const useApp = () => {
     const context = useContext(AuthContext);
     if (!context) {
-        throw new Error('useApp must be used within an AppProvider ');
+        throw new Error('useApp must be used within an AppProvider');
     }
-    return context;
+    // Si quieres que 'useApp' siga devolviendo 'clientContext', lo obtendrías aquí de Redux:
+    const clientContext = useSelector((state: RootState) => state.clientContext);
+    return { ...context, clientContext };
 };
-
-// Componente proveedor de autenticación
 interface AppProviderProps {
     children: ReactNode;
 }
 
-export interface ClientContext {
-    menu: MenuInfoBase[],
-    procedure: {[key:string]:ProcedureDef},
-    procedures: ProcedureDef[],
-    config:AppConfigClientSetup,
-    useragent:Details,
-    username: string,
-}
-
-export const loadClientContextData = async (): Promise<ClientContext> => {
-    const setupResponse = await fetchApi('/client-setup', {method: 'GET'});
-    if (!setupResponse.ok) { // <-- Corrección: verificar si setupResponse es ok
-        const errorData = await setupResponse.text();
-        throw new Error(errorData || 'Error al obtener configuración del cliente');
-    }
-    const clientSetup = await setupResponse.json();
-
-    const newClientContext: ClientContext = {
-        ...clientSetup,
-    };
-    return newClientContext;
-};
-
-
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
-    console.log("AppProvider rendered/re-rendered"); // Este log debería aparecer mucho menos ahora
+    console.log("AppProvider rendered/re-rendered");
 
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [showSessionExpiredMessage, setShowSessionExpiredMessage] = useState(false);
-    const [clientContext, setClientContext] = useState<ClientContext | null>(null);
+
+    // Obtener 'dispatch' para despachar acciones de Redux
+    const dispatch = useDispatch<AppDispatch>();
+    // Obtener 'clientContext' del store de Redux
+    const clientContext = useSelector((state: RootState) => state.clientContext);
+
     const navigate = useNavigate();
 
-    // Memoizamos checkSession para que no se recree a cada render,
-    // es crucial para que useEffect no se dispare innecesariamente.
+    // Memoizamos checkSession. Ahora despachará acciones de Redux.
     const checkSession = useCallback(async () => {
         try {
-            const response = await fetchApi('/keep-alive.json', {method:'GET'});
+            const response = await fetchApi('/keep-alive.json', { method: 'GET' });
             if (response.ok) {
                 setIsLoggedIn(true);
                 setShowSessionExpiredMessage(false);
-                if (clientContext === null) {
-                    console.log("Client context is null, attempting to load all client context data...");
+
+                // Si clientContext no está cargado o si hubo un error previo,
+                // despachamos el thunk para cargarlo.
+                // Con redux-persist, si ya estaba en localStorage, 'clientContext.status' será 'succeeded'.
+                if (clientContext.status === 'idle' || clientContext.status === 'failed') {
+                    console.log("Client context needs loading/reloading, dispatching fetchClientContext thunk...");
                     try {
-                        const loadedContext = await loadClientContextData();
-                        setClientContext(loadedContext);
-                        console.log("Client context data loaded successfully.");
-                    } catch (loadError: any) { // Especificar tipo 'any' para 'loadError'
+                        // .unwrap() para que el 'catch' capture los errores del thunk
+                        await dispatch(fetchClientContext()).unwrap();
+                        console.log("Client context data loaded successfully by Redux.");
+                    } catch (loadError: any) {
                         console.error("Error loading client context data during session check:", loadError);
-                        throw loadError;
+                        // No es necesario lanzar el error, el estado de Redux ya lo manejará
                     }
                 }
             } else {
+                // Si la sesión no es válida, limpiamos el estado de autenticación y el clientContext en Redux
                 setIsLoggedIn(false);
-                setClientContext(null);
+                dispatch(clearClientContext()); // Disparar la acción para limpiar el clientContext en Redux
+
                 if (!showSessionExpiredMessage && window.location.pathname !== '/login') {
                     setShowSessionExpiredMessage(true);
                 }
             }
-        } catch (error: any) { // Especificar tipo 'any' para 'error'
+        } catch (error: any) {
             console.error("Error checking session:", error);
             setIsLoggedIn(false);
-            setClientContext(null);
+            dispatch(clearClientContext()); // Limpiar clientContext en Redux
             if (!showSessionExpiredMessage && window.location.pathname !== '/login') {
                 setShowSessionExpiredMessage(true);
             }
         }
-    }, [navigate, showSessionExpiredMessage, setIsLoggedIn, setShowSessionExpiredMessage, clientContext]); // Dependencias de useCallback
+    }, [dispatch, clientContext.status, showSessionExpiredMessage]); // Dependencias: dispatch (estable), y el estado de carga del clientContext
 
     useEffect(() => {
         checkSession();
@@ -108,25 +98,22 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return () => {
             clearInterval(intervalId);
         };
-    }, [checkSession]); // Se ejecuta una vez al montar
+    }, [checkSession]); // Se ejecuta una vez al montar, y se re-ejecuta si checkSession cambia (no debería si useCallback está bien)
 
-    // ¡La CLAVE! Memoizamos el objeto de contexto
+    // ¡La CLAVE! Memoizamos el objeto de contexto.
+    // clientContext y setClientContext ya NO van aquí, se acceden directamente vía Redux.
     const authContextValue = useMemo(() => ({
         isLoggedIn,
         setIsLoggedIn,
-        checkSession, // checkSession está memoizado con useCallback
-        showSessionExpiredMessage,
-        setShowSessionExpiredMessage,
-        clientContext,
-        setClientContext
-    }), [
-        isLoggedIn,
-        setIsLoggedIn, // Las funciones set (setState) son estables y no necesitan useCallback
         checkSession,
         showSessionExpiredMessage,
-        setShowSessionExpiredMessage, // Las funciones set (setState) son estables
-        clientContext,
-        setClientContext // Las funciones set (setState) son estables
+        setShowSessionExpiredMessage,
+    }), [
+        isLoggedIn,
+        setIsLoggedIn,
+        checkSession,
+        showSessionExpiredMessage,
+        setShowSessionExpiredMessage,
     ]);
 
     return (
