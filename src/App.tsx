@@ -64,7 +64,7 @@ function App() {
                 <Route path="/procedures/:procedureName" element={<ProcedureForm />} />
                 
                 {/* Ruta 404 para URLs dentro del área protegida que no coinciden */}
-                <Route path="*" element={<div>404 - Recurso No Encontrado (Área Protegida)</div>} />
+                <Route path="*" element={<div style={{marginTop:'20px', marginLeft:"10px"}}>404 - Recurso No Encontrado</div>} />
             </Route>
 
             {/* Fallback General: Redirige cualquier URL no coincidente a la raíz, donde el área protegida tomará el control */}
