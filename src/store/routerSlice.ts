@@ -4,27 +4,33 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 export interface RouterState {
     currentPath: string;
     previousPath: string | null;
-  }
-  
-  const initialState: RouterState = {
+    redirectPath: string | null; // <--- ¡Nueva propiedad!
+}
+
+const initialState: RouterState = {
     currentPath: '/',
     previousPath: null,
-  };
-  
-  const routerSlice = createSlice({
+    redirectPath: null, // <--- Inicializamos en null
+};
+
+const routerSlice = createSlice({
     name: 'router',
     initialState,
     reducers: {
-      setCurrentPath: (state, action: PayloadAction<string>) => {
-        state.previousPath = state.currentPath;
-        state.currentPath = action.payload;
-      },
-      resetRouterState: (state) => {
-        state.currentPath = '/';
-        state.previousPath = null;
-      },
+        setCurrentPath: (state, action: PayloadAction<string>) => {
+            state.previousPath = state.currentPath;
+            state.currentPath = action.payload;
+        },
+        setRedirectPath: (state, action: PayloadAction<string | null>) => { // <--- Nuevo reducer
+            state.redirectPath = action.payload;
+        },
+        resetRouterState: (state) => {
+            state.currentPath = '/';
+            state.previousPath = null;
+            state.redirectPath = null; // <--- Asegúrate de resetearlo también
+        },
     },
-  });
-  
-  export const { setCurrentPath, resetRouterState } = routerSlice.actions;
-  export default routerSlice.reducer;
+});
+
+export const { setCurrentPath, setRedirectPath, resetRouterState } = routerSlice.actions; // <--- Exporta el nuevo action
+export default routerSlice.reducer;

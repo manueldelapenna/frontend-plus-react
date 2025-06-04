@@ -1,71 +1,74 @@
 // src/App.tsx
-import React from 'react'; // Ya no necesitas useEffect en este archivo, se mueve al handler
+import React, { useEffect } from 'react';
 import './App.css';
-import LoginPage from './pages/LoginPage';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'; // Quita Navigate de aquí si no la usas en rutas directas
-import MainLayout from './components/MainLayout';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import MainLayout from './components/MainLayout'; // Asegúrate de que MainLayout tiene <Outlet />
 import SessionExpiredMessage from './components/SessionExpiredMessage';
-import { AppProvider, useApp } from './contexts/AppContext';
+import { AppProvider } from './contexts/AppContext'; 
 import GenericDataGrid from './components/GenericDataGrid';
 import HomePage from './pages/HomePage';
 import LogoutPage from './pages/LogoutPage';
+import LoginPage from './pages/LoginPage';
 import ProcedureForm from './components/ProcedureForm';
 
-// --- Importaciones de Redux y Redux Persist ---
+// --- Redux y Redux Persist ---
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { store, persistor } from './store';
 
-// --- ¡Importa el nuevo componente! ---
-import InitialRedirectHandler from './components/InitialRedirectHandler'; 
+// --- Componentes de control de rutas ---
+import PrivateRoute from './components/PrivateRoute';
+import InitialRedirectHandler from './components/InitialRedirectHandler';
+import { useAppDispatch } from './store';
+import { setCurrentPath } from './store/routerSlice';
 
-// Aquí no necesitas useDispatch, AppDispatch, setCurrentPath, useCurrentPath porque InitialRedirectHandler los usa
-// function App() {} // Elimina estos imports si ya no los usas en App.tsx directamente
 
+// LocationTracker (sin cambios)
+const LocationTracker: React.FC = () => {
+    const location = useLocation();
+    const dispatch = useAppDispatch();
+    useEffect(() => {
+        dispatch(setCurrentPath(location.pathname + location.search));
+    }, [location, dispatch]);
+    return null;
+};
 
 function App() {
-    const { isLoggedIn } = useApp();
-    // Las siguientes líneas ya no son necesarias aquí, las movimos a InitialRedirectHandler
-    // const location = useLocation(); 
-    // const dispatch = useDispatch<AppDispatch>();
-    // const persistedPath = useCurrentPath();
-
-    // El useEffect que despachaba la URL aquí, también se mueve a InitialRedirectHandler
-    // useEffect(() => { /* ... */ }, [...]);
+    console.log("¡El componente App se está renderizando!"); // Mantén este log
 
     return (
         <Routes>
-            {/* Ruta del login, si está logueado, la lógica de InitialRedirectHandler se encargará */}
+            {/* Rutas Públicas */}
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/logout" element={<LogoutPage />} /> 
+            <Route path="/logout" element={<LogoutPage />} />
 
-            {/* Rutas de entrada para usuarios logueados o no */}
-            {/* Si NO está logueado, siempre va a LoginPage */}
-            {/* Si SÍ está logueado, usa InitialRedirectHandler para decidir a dónde ir */}
-            <Route 
-                path="/" 
-                element={isLoggedIn ? <InitialRedirectHandler /> : <LoginPage />}
-            />
-            {/* Ruta por defecto para cualquier otra URL no encontrada */}
-            <Route 
-                path="*" 
-                element={isLoggedIn ? <InitialRedirectHandler /> : <LoginPage />}
-            />
+            {/*
+                Grupo de Rutas Protegidas:
+                Este es un Route padre que usa PrivateRoute como su guardián.
+                Si PrivateRoute permite el acceso, renderizará a sus hijos.
+                Sus hijos son InitialRedirectHandler y MainLayout.
+                MainLayout a su vez contendrá un <Outlet /> para renderizar sus rutas anidadas.
+            */}
+            <Route element={
+                        <PrivateRoute>
+                            <InitialRedirectHandler /> {/* Se ejecuta si estás autenticado */}
+                            {/* MainLayout es un componente que ya renderiza <Outlet /> */}
+                            {/* Las rutas anidadas de abajo se renderizarán *dentro* del <Outlet /> de MainLayout */}
+                            <MainLayout />
+                        </PrivateRoute>
+                    }>
+                {/* Estas son las rutas específicas que aparecerán dentro de MainLayout y están protegidas */}
+                <Route path="/" element={<HomePage />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/table/:tableName" element={<GenericDataGrid />} />
+                <Route path="/procedures/:procedureName" element={<ProcedureForm />} />
+                
+                {/* Ruta 404 para URLs dentro del área protegida que no coinciden */}
+                <Route path="*" element={<div>404 - Recurso No Encontrado (Área Protegida)</div>} />
+            </Route>
 
-            {/* Rutas Protegidas que requieren MainLayout */}
-            {/* Si isLoggedIn es false, se activará la ruta '*' o '/' de arriba y redirigirá a LoginPage */}
-            <Route 
-                path="/home" 
-                element={isLoggedIn ? <MainLayout><HomePage /></MainLayout> : <LoginPage />}
-            />
-            <Route 
-                path="/table/:tableName" 
-                element={isLoggedIn ? <MainLayout><GenericDataGrid /></MainLayout> : <LoginPage />}
-            />
-            <Route 
-                path="/procedures/:procedureName" 
-                element={isLoggedIn ? <MainLayout><ProcedureForm /></MainLayout> : <LoginPage />}
-            />
+            {/* Fallback General: Redirige cualquier URL no coincidente a la raíz, donde el área protegida tomará el control */}
+            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
 }
@@ -75,7 +78,8 @@ const RootApp = () => {
         <Provider store={store}>
             <PersistGate loading={null} persistor={persistor}>
                 <BrowserRouter>
-                    <AppProvider>
+                    <LocationTracker />
+                    <AppProvider> 
                         <App/>
                         <SessionExpiredMessage />
                     </AppProvider>

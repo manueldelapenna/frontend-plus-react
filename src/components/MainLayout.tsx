@@ -1,11 +1,12 @@
 // src/components/MainLayout.tsx
-import React, { ReactNode, useEffect } from 'react'; // Agregamos useEffect
+import React, { useEffect } from 'react';
+import { Outlet } from 'react-router-dom'; // ¡IMPORTA Outlet AQUÍ!
 import {
     Box, AppBar, Toolbar, Typography, Button, Drawer, CssBaseline,
     IconButton, useTheme, useMediaQuery
 } from '@mui/material';
 import { useApp } from '../contexts/AppContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom'; // No estoy seguro si 'useNavigate' es necesario aquí si solo se usa en SideMenu o para Logout
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -19,44 +20,43 @@ import { setDrawerOpen, toggleDrawer } from '../store/menuUiSlice';
 
 const drawerWidth = 240;
 
-interface MainLayoutProps {
-    children: ReactNode;
-}
+// ELIMINAMOS LA INTERFAZ MainLayoutProps si solo contenía 'children'
+// Si MainLayoutProps tenía OTRAS PROPS que usabas, entonces deja la interfaz
+// y borra SÓLO 'children: ReactNode;'
+// interface MainLayoutProps {
+//     children: ReactNode; // ESTO SE ELIMINA O SE HACE OPCIONAL
+// }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+// const MainLayout: React.FC<MainLayoutProps> = ({ children }) => { // Quitamos { children }
+const MainLayout: React.FC = () => { // MainLayout ya no recibe 'children' como prop
     const { clientContext } = useApp();
     const logout = useLogout();
 
-    // Reemplazamos useState por el hook de Redux
-    const isDrawerOpen = useIsDrawerOpen(); // Obtiene el estado desde Redux
-    const dispatch = useAppDispatch(); // Para despachar acciones
+    const isDrawerOpen = useIsDrawerOpen();
+    const dispatch = useAppDispatch();
 
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    // Efecto para cerrar el Drawer en móviles si se abre y el tamaño de pantalla cambia
-    // O si quieres que el Drawer siempre esté cerrado por defecto en móviles
     useEffect(() => {
         if (isMobile && isDrawerOpen) {
             dispatch(setDrawerOpen(false));
         }
     }, [isMobile, isDrawerOpen, dispatch]);
 
-
     const handleToggleDrawer = () => {
-        dispatch(toggleDrawer()); // Despacha la acción de toggle
+        dispatch(toggleDrawer());
     };
 
-    // La lógica de isMobile ya no necesita handleDrawerOpen/Close separados si toggle maneja todo
-    // y quieres que el Drawer se cierre automáticamente en móvil como en el useEffect.
-    // Si quieres un comportamiento diferente en móvil, deberás adaptarlo aquí.
     const handleDrawerCloseMobile = () => {
         if (isMobile && isDrawerOpen) {
             dispatch(setDrawerOpen(false));
         }
     };
 
-
+    // Si clientContext no existe (por ejemplo, al cargar o si la sesión falla),
+    // muestra un mensaje de carga.
+    // Esto es importante para evitar errores si los datos no están disponibles.
     if (!clientContext) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -78,7 +78,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         easing: theme.transitions.easing.sharp,
                         duration: theme.transitions.duration.leavingScreen,
                     }),
-                    ...(isDrawerOpen && { // Usamos isDrawerOpen de Redux
+                    ...(isDrawerOpen && {
                         width: `calc(100% - ${drawerWidth}px)`,
                         marginLeft: `${drawerWidth}px`,
                         transition: (theme) => theme.transitions.create(['width', 'margin'], {
@@ -92,16 +92,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        onClick={handleToggleDrawer} // Usamos la nueva función para toggle
+                        onClick={handleToggleDrawer}
                         edge="start"
                         sx={{
                             marginRight: 2.2,
                         }}
                     >
-                        {isDrawerOpen ? <ChevronLeftIcon /> : <MenuIcon />} {/* Usamos isDrawerOpen de Redux */}
+                        {isDrawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                        {isDrawerOpen ? '' : clientContext.config.title} {/* Usamos isDrawerOpen de Redux */}
+                        {isDrawerOpen ? '' : clientContext.config.title}
                     </Typography>
                     <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}>
                         {clientContext.username}
@@ -118,7 +118,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <Drawer
                 variant="persistent"
                 anchor="left"
-                open={isDrawerOpen} // Usamos isDrawerOpen de Redux
+                open={isDrawerOpen}
                 sx={{
                     width: drawerWidth,
                     flexShrink: 0,
@@ -140,7 +140,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         minHeight: theme.mixins.toolbar.minHeight,
                     }}
                 >
-                    {isDrawerOpen ? clientContext.config.title : ''} {/* Usamos isDrawerOpen de Redux */}
+                    {isDrawerOpen ? clientContext.config.title : ''}
                 </Toolbar>
                 {/* Pasamos la función para cerrar el drawer al SideMenu */}
                 <SideMenu onMenuItemClick={handleDrawerCloseMobile} />
@@ -154,7 +154,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         duration: theme.transitions.duration.leavingScreen,
                     }),
                     marginLeft: `-${drawerWidth}px`,
-                    ...(isDrawerOpen && { // Usamos isDrawerOpen de Redux
+                    ...(isDrawerOpen && {
                         transition: (theme) => theme.transitions.create('margin', {
                             easing: theme.transitions.easing.easeOut,
                             duration: theme.transitions.duration.enteringScreen,
@@ -163,15 +163,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     }),
                     minWidth: 0,
                     flexShrink: 0,
+                    // Asegúrate de que el paddingTop sea suficiente para la AppBar
                     paddingTop: `${appBarOffset.minHeight}px`,
                     height: '100%',
                     boxSizing: 'border-box',
                     display: 'flex',
                     flexDirection: 'column',
-                    width: isDrawerOpen ? `calc(100% - ${drawerWidth}px)` : '100%', // Usamos isDrawerOpen de Redux
+                    width: isDrawerOpen ? `calc(100% - ${drawerWidth}px)` : '100%',
                 }}
             >
-                {children}
+                {/* ¡AQUÍ ES DONDE DEBE IR EL CONTENIDO DE LA RUTA ANIDADA! */}
+                {/* Elimina {children} y reemplázalo por <Outlet /> */}
+                <Outlet />
             </Box>
         </Box>
     );
