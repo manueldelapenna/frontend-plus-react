@@ -1,3 +1,4 @@
+// src/store/index.ts
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
 import {
     persistStore,
@@ -12,23 +13,23 @@ import {
 import storage from 'redux-persist/lib/storage';
 
 import clientContextReducer, { ClientContextState } from './clientContextSlice';
-import routerReducer from './routerSlice'; // Importa el nuevo reducer
-
+import routerReducer from './routerSlice';
+import menuUiReducer, { MenuUiState } from './menuUiSlice'; // <--- ¡Importa el nuevo reducer!
 
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
-//import { getAppPrefix } from '../utils/functions';
 
 const rootReducer = combineReducers({
     clientContext: clientContextReducer,
-    router: routerReducer, // ¡Añade el nuevo reducer aquí!
+    router: routerReducer,
+    menuUi: menuUiReducer, // <--- ¡Añade el nuevo reducer aquí!
     // ...otros slices
 });
 
 const persistConfig = {
     key: 'root',
     storage,
-    // ¡Asegúrate de añadir 'router' a la whitelist si quieres que persista!
-    whitelist: ['clientContext', 'router'], 
+    // <--- ¡Asegúrate de añadir 'menuUi' a la whitelist para que persista!
+    whitelist: ['clientContext', 'router', 'menuUi'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -51,7 +52,7 @@ export type AppDispatch = typeof store.dispatch;
 export const useAppDispatch: () => AppDispatch = useDispatch;
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
-// Hooks selectores personalizados
+// Hooks selectores personalizados existentes
 export const useClientContext = (): ClientContextState => {
     return useAppSelector(state => state.clientContext);
 };
@@ -64,11 +65,23 @@ export const useClientContextError = (): ClientContextState['error'] => {
     return useAppSelector(state => state.clientContext.error);
 };
 
-// --- ¡NUEVOS SELECTORES PARA EL ESTADO DEL ROUTER! ---
 export const useCurrentPath = (): string => {
-  return useAppSelector(state => state.router.currentPath);
+    return useAppSelector(state => state.router.currentPath);
 };
 
 export const usePreviousPath = (): string | null => {
-  return useAppSelector(state => state.router.previousPath);
+    return useAppSelector(state => state.router.previousPath);
+};
+
+// <--- ¡NUEVOS SELECTORES PARA EL ESTADO DEL MENÚ UI! ---
+export const useMenuUi = (): MenuUiState => {
+    return useAppSelector(state => state.menuUi);
+};
+
+export const useIsDrawerOpen = (): boolean => {
+    return useAppSelector(state => state.menuUi.isDrawerOpen);
+};
+
+export const useSubMenuOpenState = (menuName: string): boolean => {
+    return useAppSelector(state => state.menuUi.subMenuOpenStates[menuName] || false);
 };

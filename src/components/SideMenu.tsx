@@ -12,24 +12,31 @@ import { useApp } from '../contexts/AppContext';
 import { MenuInfoBase, MenuInfoProc, MenuInfoTable, MenuInfoWScreen, MenuInfoMenu } from "backend-plus";
 import { blue, orange, teal } from '@mui/material/colors';
 
+// Importamos los hooks de Redux y las acciones del nuevo slice
+import { useSubMenuOpenState, useAppDispatch } from '../store';
+import { toggleSubMenu, setSubMenuOpen } from '../store/menuUiSlice';
+
 interface SideMenuProps {
-    // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop si el menú siempre queda abierto
+    onMenuItemClick?: () => void; // <--- Volvemos a necesitar esta prop si queremos cerrar el drawer principal
 }
 
 interface MenuListItemProps {
     item: MenuInfoBase;
     level: number;
-    // onMenuItemClick?: () => void; // <--- Ya no es necesaria esta prop
+    onMenuItemClick?: () => void; // <--- Volvemos a necesitar esta prop
 }
 
-const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemClick */ }) => { // Remueve onMenuItemClick
+const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClick }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const [open, setOpen] = React.useState(false);
+
+    // Usamos el estado del submenú desde Redux
+    const open = useSubMenuOpenState(item.name); // 'item.name' es la clave única para el submenú
+    const dispatch = useAppDispatch();
 
     const handleClick = () => {
         if (item.menuType === "menu") {
-            setOpen(!open);
+            dispatch(toggleSubMenu(item.name)); // Despacha la acción de toggle para este submenú
         } else {
             if (item.menuType === "table") {
                 const tableName = (item as MenuInfoTable).table || item.name;
@@ -46,24 +53,21 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
             } else if (item.menuType === "proc") {
                 navigate(`/procedures/${item.name}`);
             }
-            // Eliminamos la llamada al callback para cerrar el menú aquí
-            // if (onMenuItemClick) {
-            //     onMenuItemClick();
-            // }
+            // Llamamos al callback para cerrar el menú principal si se proporciona
+            if (onMenuItemClick) {
+                onMenuItemClick();
+            }
         }
     };
 
     const getIcon = (item: MenuInfoBase) => {
         switch (item.menuType) {
-            case "table": 
-                // Color azul oscuro para tablas, sugiriendo datos y estructura
-                return <TableChartIcon sx={{ color: blue[700] }} />; 
-            case "proc": 
-                // Ícono de "herramienta" para procesos/acciones con parámetros, color índigo oscuro
-                return <DnsIcon sx={{ color: teal[700] }} />; 
-            case "menu": 
-                // Ícono de carpeta con un color naranja sutil
-                return <FolderIcon sx={{ color: orange[800] }} />; 
+            case "table":
+                return <TableChartIcon sx={{ color: blue[700] }} />;
+            case "proc":
+                return <DnsIcon sx={{ color: teal[700] }} />;
+            case "menu":
+                return <FolderIcon sx={{ color: orange[800] }} />;
             default: return null;
         }
     };
@@ -75,7 +79,7 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
     return (
         <>
             <ListItemButton onClick={handleClick} sx={{ pl: level * 2 }}>
-                <ListItemIcon sx={{minWidth:'38px'}}>
+                <ListItemIcon sx={{ minWidth: '38px' }}>
                     {getIcon(item)}
                 </ListItemIcon>
                 <ListItemText primary={item.label || item.name} />
@@ -85,8 +89,8 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
                 <Collapse in={open} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
                         {(item as MenuInfoMenu).menuContent.map((subItem) => (
-                            // Remueve onMenuItemClick aquí también
-                            <MenuListItem key={subItem.name} item={subItem} level={level + 1} /* onMenuItemClick={onMenuItemClick} */ />
+                            // Pasamos onMenuItemClick aquí también
+                            <MenuListItem key={subItem.name} item={subItem} level={level + 1} onMenuItemClick={onMenuItemClick} />
                         ))}
                     </List>
                 </Collapse>
@@ -96,16 +100,16 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level /*, onMenuItemC
 };
 
 
-const SideMenu: React.FC<SideMenuProps> = ({ /* onMenuItemClick */ }) => { // Remueve onMenuItemClick aquí
+const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => { // Volvemos a recibir onMenuItemClick
     const { clientContext } = useApp();
     const navigate = useNavigate();
 
     const handleHomeClick = () => {
         navigate('/home');
-        // Eliminamos la llamada al callback para cerrar el menú aquí
-        // if (onMenuItemClick) {
-        //     onMenuItemClick();
-        // }
+        // Llamamos al callback para cerrar el menú principal si se proporciona
+        if (onMenuItemClick) {
+            onMenuItemClick();
+        }
     };
 
     if (!clientContext || !clientContext.menu) {
@@ -130,8 +134,8 @@ const SideMenu: React.FC<SideMenuProps> = ({ /* onMenuItemClick */ }) => { // Re
                 </ListItem>
                 <Divider />
                 {clientContext.menu.map((menuItem: MenuInfoBase) => (
-                    // Remueve onMenuItemClick aquí
-                    <MenuListItem key={menuItem.name} item={menuItem} level={1} /* onMenuItemClick={onMenuItemClick} */ />
+                    // Pasamos onMenuItemClick a MenuListItem
+                    <MenuListItem key={menuItem.name} item={menuItem} level={1} onMenuItemClick={onMenuItemClick} />
                 ))}
             </List>
         </Box>

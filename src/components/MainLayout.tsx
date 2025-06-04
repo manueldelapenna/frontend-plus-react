@@ -1,5 +1,5 @@
 // src/components/MainLayout.tsx
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect } from 'react'; // Agregamos useEffect
 import {
     Box, AppBar, Toolbar, Typography, Button, Drawer, CssBaseline,
     IconButton, useTheme, useMediaQuery
@@ -12,6 +12,11 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SideMenu from './SideMenu';
 import useLogout from '../hooks/useLogout';
 
+// Importamos los hooks de Redux y las acciones del nuevo slice
+import { useAppDispatch, useIsDrawerOpen } from '../store';
+import { setDrawerOpen, toggleDrawer } from '../store/menuUiSlice';
+
+
 const drawerWidth = 240;
 
 interface MainLayoutProps {
@@ -21,18 +26,36 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const { clientContext } = useApp();
     const logout = useLogout();
-    const [open, setOpen] = useState(false);
+
+    // Reemplazamos useState por el hook de Redux
+    const isDrawerOpen = useIsDrawerOpen(); // Obtiene el estado desde Redux
+    const dispatch = useAppDispatch(); // Para despachar acciones
 
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    const handleDrawerOpen = () => {
-        setOpen(true);
+    // Efecto para cerrar el Drawer en móviles si se abre y el tamaño de pantalla cambia
+    // O si quieres que el Drawer siempre esté cerrado por defecto en móviles
+    useEffect(() => {
+        if (isMobile && isDrawerOpen) {
+            dispatch(setDrawerOpen(false));
+        }
+    }, [isMobile, isDrawerOpen, dispatch]);
+
+
+    const handleToggleDrawer = () => {
+        dispatch(toggleDrawer()); // Despacha la acción de toggle
     };
 
-    const handleDrawerClose = () => {
-        setOpen(false);
+    // La lógica de isMobile ya no necesita handleDrawerOpen/Close separados si toggle maneja todo
+    // y quieres que el Drawer se cierre automáticamente en móvil como en el useEffect.
+    // Si quieres un comportamiento diferente en móvil, deberás adaptarlo aquí.
+    const handleDrawerCloseMobile = () => {
+        if (isMobile && isDrawerOpen) {
+            dispatch(setDrawerOpen(false));
+        }
     };
+
 
     if (!clientContext) {
         return (
@@ -42,11 +65,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         );
     }
 
-    // Calcular la altura de la AppBar dinámicamente para el offset del contenido
     const appBarOffset = theme.mixins.toolbar;
 
     return (
-        // El Box raíz ocupa el 100% del alto del viewport y usa flex para su contenido
         <Box sx={{ display: 'flex', height: '100vh' }}>
             <CssBaseline />
             <AppBar
@@ -57,7 +78,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         easing: theme.transitions.easing.sharp,
                         duration: theme.transitions.duration.leavingScreen,
                     }),
-                    ...(open && {
+                    ...(isDrawerOpen && { // Usamos isDrawerOpen de Redux
                         width: `calc(100% - ${drawerWidth}px)`,
                         marginLeft: `${drawerWidth}px`,
                         transition: (theme) => theme.transitions.create(['width', 'margin'], {
@@ -71,16 +92,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        onClick={open ? handleDrawerClose : handleDrawerOpen}
+                        onClick={handleToggleDrawer} // Usamos la nueva función para toggle
                         edge="start"
                         sx={{
                             marginRight: 2.2,
                         }}
                     >
-                        {open ? <ChevronLeftIcon /> : <MenuIcon />}
+                        {isDrawerOpen ? <ChevronLeftIcon /> : <MenuIcon />} {/* Usamos isDrawerOpen de Redux */}
                     </IconButton>
                     <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                        {open ? '' : clientContext.config.title}
+                        {isDrawerOpen ? '' : clientContext.config.title} {/* Usamos isDrawerOpen de Redux */}
                     </Typography>
                     <Typography variant="subtitle1" component="div" sx={{ mr: 2 }}>
                         {clientContext.username}
@@ -97,7 +118,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <Drawer
                 variant="persistent"
                 anchor="left"
-                open={open}
+                open={isDrawerOpen} // Usamos isDrawerOpen de Redux
                 sx={{
                     width: drawerWidth,
                     flexShrink: 0,
@@ -119,22 +140,21 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         minHeight: theme.mixins.toolbar.minHeight,
                     }}
                 >
-                    {open ? clientContext.config.title : ''}
+                    {isDrawerOpen ? clientContext.config.title : ''} {/* Usamos isDrawerOpen de Redux */}
                 </Toolbar>
-                <SideMenu />
+                {/* Pasamos la función para cerrar el drawer al SideMenu */}
+                <SideMenu onMenuItemClick={handleDrawerCloseMobile} />
             </Drawer>
             <Box
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    // Eliminamos el padding de aquí para evitar desbordamientos
-                    // p: 3, 
                     transition: (theme) => theme.transitions.create('margin', {
                         easing: theme.transitions.easing.sharp,
                         duration: theme.transitions.duration.leavingScreen,
                     }),
                     marginLeft: `-${drawerWidth}px`,
-                    ...(open && {
+                    ...(isDrawerOpen && { // Usamos isDrawerOpen de Redux
                         transition: (theme) => theme.transitions.create('margin', {
                             easing: theme.transitions.easing.easeOut,
                             duration: theme.transitions.duration.enteringScreen,
@@ -148,8 +168,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     boxSizing: 'border-box',
                     display: 'flex',
                     flexDirection: 'column',
-                    // MODIFICACIÓN CLAVE: Ancho condicional para el contenido principal
-                    width: open ? `calc(100% - ${drawerWidth}px)` : '100%',
+                    width: isDrawerOpen ? `calc(100% - ${drawerWidth}px)` : '100%', // Usamos isDrawerOpen de Redux
                 }}
             >
                 {children}
