@@ -257,7 +257,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     <Box
                         sx={{
                             position: 'absolute',
-                            top: '36px',
+                            top: '70px',
                             left: theme.spacing(2),
                             right: theme.spacing(2),
                             bottom: theme.spacing(2),
