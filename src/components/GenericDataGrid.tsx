@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataGrid, Column } from 'react-data-grid';
-import 'react-data-grid/lib/styles.css'; // Importar los estilos de react-data-grid
+import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus";
 import { useParams } from 'react-router-dom';
 import { fetchApi } from '../utils/fetchApi';
-import { CircularProgress, Typography, Box, Alert, useTheme } from '@mui/material'; // Importado useTheme para acceder a theme.spacing
+import { CircularProgress, Typography, Box, Alert, useTheme, InputBase } from '@mui/material';
 import { quitarGuionesBajos, cambiarGuionesBajosPorEspacios } from '../utils/functions';
 
 const getPrimaryKeyValues = (row: any, primaryKey: string[]): string => {
@@ -15,27 +15,63 @@ interface GenericDataGridProps {
     // tableName: string; // Eliminado, se obtiene de useParams
 }
 
-// Interfaz para las propiedades del Formatter de celda
 interface CellFormatterProps {
-    value: any; // El valor de la celda
-    column: Column<any>; // La definición de la columna
-    row: any; // La fila completa
+    value: any;
+    column: Column<any>;
+    row: any;
     isCellSelected: boolean;
     isRowSelected: boolean;
     tabIndex: number;
     onRowChange: (updatedRow: any) => void;
 }
 
-// Formatter de ejemplo para manejar diferentes tipos de datos en las celdas
 const DefaultCellFormatter: React.FC<CellFormatterProps> = ({ value }) => {
     if (typeof value === 'object' && value !== null) {
-        // Podrías mostrar un resumen, un botón para ver detalles, etc.
-        // Por ahora, solo indicamos que es un objeto para evitar textos largos
         return <span>[Objeto]</span>;
     }
-    // Para valores primitivos (string, number, boolean), los convertimos a string
     return <span>{String(value)}</span>;
 };
+
+// --- COMPONENTE DE FILTRO ---
+// Interfaz para las propiedades del renderizador de filtro
+interface FilterRendererProps<R, S> {
+    column: Column<R, S>;
+    filters: Record<string, string>;
+    setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}
+
+// Componente funcional para el input de filtro
+function textEditor<R, S>({
+    column,
+    filters,
+    setFilters
+}: FilterRendererProps<R, S>) {
+    // console.log(`Ejecutando textEditor para columna: ${column.name}`); // Actívalo si necesitas depurar
+    return (
+        <InputBase
+            value={filters[column.key] || ''}
+            onChange={(e) =>
+                setFilters({
+                    ...filters,
+                    [column.key]: e.target.value
+                })
+            }
+            placeholder={``}
+            sx={{
+                width: '100%',
+                margin: '0',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                padding: '2px 4px',
+                fontSize: '0.8rem',
+                boxSizing: 'border-box',
+            }}
+            onClick={(e) => e.stopPropagation()} // Importante: evita que el click en el input active la selección de fila/columna de la grilla
+        />
+    );
+}
+// --- FIN COMPONENTE DE FILTRO ---
+
 
 const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
@@ -44,7 +80,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    const theme = useTheme(); // Para acceder a theme.spacing
+    // --- ESTADO PARA LOS FILTROS ---
+    const [filters, setFilters] = useState<Record<string, string>>({});
+
+    const theme = useTheme();
 
     useEffect(() => {
         if (!tableName) {
@@ -60,7 +99,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             setTableData([]);
 
             try {
-                // Cargar la definición de la tabla
                 const bodyDefinition = new URLSearchParams({ table: tableName });
                 const responseDefinition = await fetchApi(`/table_structure`, {
                     method: 'POST',
@@ -75,7 +113,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 const definition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
                 setTableDefinition(definition);
 
-                // Cargar los datos de la tabla
                 const bodyData = new URLSearchParams({ table: tableName });
                 const responseData = await fetchApi(`/table_data`, {
                     method: 'POST',
@@ -109,6 +146,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         return tableDefinition.primaryKey || ['id'];
     }, [tableDefinition]);
 
+    // --- DEFINICIÓN DE COLUMNAS CON renderHeaderCell ---
     const columns: Column<any>[] = useMemo(() => {
         if (!tableDefinition) return [];
 
@@ -117,14 +155,53 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             name: field.label || cambiarGuionesBajosPorEspacios(field.name),
             resizable: true,
             sortable: true,
+            editable: true,
             formatter: DefaultCellFormatter,
-            flexGrow: 1, // Usamos flexGrow: 1 para que las columnas se ajusten
-            minWidth: 80, // Ancho mínimo para evitar que las columnas sean demasiado pequeñas
-        }));
-    }, [tableDefinition]); // Dependencia: tableDefinition
+            flexGrow: 1,
+            minWidth: 60, // Ancho mínimo suficiente para el input de filtro
 
-    // Determina si la grilla debe tener una altura reducida
-    const showNoRowsMessage = tableData.length === 0 && !loading && !error;
+            // Definición del renderHeaderCell (¡el nombre correcto!)
+            renderHeaderCell: ({ column }) => {
+                // console.log(`Renderizando header para: ${column.name}`); // Actívalo si necesitas depurar
+                return (
+                    <div
+                        // Asignamos la clase de react-data-grid para asegurar el correcto renderizado
+                        className="rdg-cell"
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            height: '100%', // Que ocupe toda la altura del encabezado (70px)
+                            justifyContent: 'space-between', // Espacio entre el nombre y el input
+                            alignItems: 'flex-start', // Alinea el contenido a la izquierda/arriba
+                            padding: '4px', // Padding general dentro del encabezado
+                            boxSizing: 'border-box',
+                        }}
+                    >
+                        <span style={{ fontWeight: 'bold', paddingBottom: '4px' }}>{column.name}</span>
+                        {/* Renderizamos el componente de filtro */}
+                        {textEditor({ column: column, filters, setFilters })}
+                    </div>
+                );
+            }
+        }));
+    }, [tableDefinition, filters]); // Dependencia: tableDefinition y filters para que los encabezados se re-rendericen al cambiar el filtro
+
+    // --- FILTRADO DE DATOS ---
+    const filteredRows = useMemo(() => {
+        let rows = tableData;
+        Object.keys(filters).forEach(key => {
+            const filterValue = filters[key].toLowerCase();
+            if (filterValue) {
+                rows = rows.filter(row => {
+                    const cellValue = String(row[key] || '').toLowerCase();
+                    return cellValue.includes(filterValue);
+                });
+            }
+        });
+        return rows;
+    }, [tableData, filters]);
+
+    const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
 
     if (loading) {
         return (
@@ -158,9 +235,8 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             </Typography>
             <Box
                 sx={{
-                    // MODIFICACIÓN CLAVE: Altura condicional para el contenedor de la grilla
-                    flexGrow: showNoRowsMessage ? 0 : 1, // No crece si no hay filas
-                    height: showNoRowsMessage ? '150px' : '100%', // Altura fija si no hay filas, sino 100%
+                    flexGrow: showNoRowsMessage ? 0 : 1,
+                    height: showNoRowsMessage ? '150px' : '100%',
                     boxSizing: 'border-box',
                     position: 'relative',
                     overflowX: 'auto',
@@ -169,19 +245,19 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     pb: 2
                 }}
             >
-                {/* El DataGrid siempre se renderiza para mostrar las columnas */}
                 <DataGrid
-                    columns={columns}
-                    rows={tableData} // tableData puede ser un array vacío
+                    columns={columns} // Usamos las columnas generadas con el renderHeaderCell
+                    rows={filteredRows} // Usamos las filas filtradas
+                    enableVirtualization={true}
                     rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)}
                     style={{ height: '100%', width: '100%', boxSizing: 'border-box' }}
+                    headerRowHeight={70} // Altura de la fila del encabezado para dar espacio al filtro
                 />
                 {showNoRowsMessage && (
-                    // El mensaje se posiciona para que se vea dentro de la altura reducida
                     <Box
                         sx={{
                             position: 'absolute',
-                            top: '36px', // Se posiciona debajo de los encabezados de la grilla
+                            top: '36px',
                             left: theme.spacing(2),
                             right: theme.spacing(2),
                             bottom: theme.spacing(2),
