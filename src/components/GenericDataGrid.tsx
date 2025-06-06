@@ -1,52 +1,41 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataGrid, Column } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
-import { TableDefinition, FieldDefinition } from "backend-plus";
+import { TableDefinition, FieldDefinition } from "backend-plus"; 
+
+// CORRECCIÓN: react-router-dom es la importación correcta.
 import { useParams } from 'react-router-dom';
 import { fetchApi } from '../utils/fetchApi';
-import { CircularProgress, Typography, Box, Alert, useTheme, InputBase } from '@mui/material';
+import { CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton } from '@mui/material';
 import { quitarGuionesBajos, cambiarGuionesBajosPorEspacios } from '../utils/functions';
+
+// --- CAMBIO DE ICONOS: Importar de Material-UI en lugar de lucide-react ---
+import SearchIcon from '@mui/icons-material/Search';
+import SearchOffIcon from '@mui/icons-material/SearchOff';
+import CloseIcon from '@mui/icons-material/Close'; // Usamos CloseIcon como equivalente a X de lucide-react
+import AddIcon from '@mui/icons-material/Add';     // Equivalente a PlusIcon
+import DeleteIcon from '@mui/icons-material/Delete'; // Equivalente a Trash2Icon
+// --- FIN CAMBIO DE ICONOS ---
 
 const getPrimaryKeyValues = (row: any, primaryKey: string[]): string => {
     return primaryKey.map(key => row[key]).join('-');
 };
 
 interface GenericDataGridProps {
-    // tableName: string; // Eliminado, se obtiene de useParams
+    // tableName: string;
 }
 
-interface CellFormatterProps {
-    value: any;
-    column: Column<any>;
-    row: any;
-    isCellSelected: boolean;
-    isRowSelected: boolean;
-    tabIndex: number;
-    onRowChange: (updatedRow: any) => void;
-}
-
-const DefaultCellFormatter: React.FC<CellFormatterProps> = ({ value }) => {
-    if (typeof value === 'object' && value !== null) {
-        return <span>[Objeto]</span>;
-    }
-    return <span>{String(value)}</span>;
-};
-
-// --- COMPONENTE DE FILTRO ---
-// Interfaz para las propiedades del renderizador de filtro
 interface FilterRendererProps<R, S> {
     column: Column<R, S>;
     filters: Record<string, string>;
     setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
-// Componente funcional para el input de filtro
-function textEditor<R, S>({
+function FilterInputRenderer<R, S>({
     column,
     filters,
     setFilters
 }: FilterRendererProps<R, S>) {
-    // console.log(`Ejecutando textEditor para columna: ${column.name}`); // Actívalo si necesitas depurar
     return (
         <InputBase
             value={filters[column.key] || ''}
@@ -56,7 +45,7 @@ function textEditor<R, S>({
                     [column.key]: e.target.value
                 })
             }
-            placeholder={``}
+            placeholder={`Filtrar...`}
             sx={{
                 width: '100%',
                 margin: '0',
@@ -66,12 +55,10 @@ function textEditor<R, S>({
                 fontSize: '0.8rem',
                 boxSizing: 'border-box',
             }}
-            onClick={(e) => e.stopPropagation()} // Importante: evita que el click en el input active la selección de fila/columna de la grilla
+            onClick={(e) => e.stopPropagation()}
         />
     );
 }
-// --- FIN COMPONENTE DE FILTRO ---
-
 
 const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
@@ -80,10 +67,17 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    // --- ESTADO PARA LOS FILTROS ---
+    const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
     const [filters, setFilters] = useState<Record<string, string>>({});
+    const [selectedRows, setSelectedRows] = useState((): ReadonlySet<string> => new Set());
 
     const theme = useTheme();
+
+    useEffect(() => {
+        setFilters({});
+        setIsFilterRowVisible(false);
+        setSelectedRows(new Set());
+    }, [tableName]);
 
     useEffect(() => {
         if (!tableName) {
@@ -110,7 +104,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     throw new Error(`Error al cargar la estructura de la tabla '${tableName}': ${responseDefinition.status} - ${errorText}`);
                 }
                 const rawResponseTextDefinition = await responseDefinition.text();
-                const definition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
+                const definition: TableDefinition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
                 setTableDefinition(definition);
 
                 const bodyData = new URLSearchParams({ table: tableName });
@@ -125,7 +119,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 }
                 const rawResponseTextData = await responseData.text();
                 const data = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
-
                 setTableData(data);
 
             } catch (err: any) {
@@ -146,60 +139,160 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         return tableDefinition.primaryKey || ['id'];
     }, [tableDefinition]);
 
-    // --- DEFINICIÓN DE COLUMNAS CON renderHeaderCell ---
+    const toggleFilterVisibility = useCallback(() => {
+        setIsFilterRowVisible(prev => {
+            if (prev) {
+                setFilters({});
+            }
+            return !prev;
+        });
+    }, []);
+
+    const handleAddRow = useCallback(() => {
+        if (!tableDefinition) return;
+
+        const newRow: Record<string, any> = {};
+        tableDefinition.fields.forEach(field => {
+            newRow[quitarGuionesBajos(field.name)] = null;
+        });
+
+        let tempId = -1;
+        // Esta lógica de generación de ID temporal solo aplica si la clave primaria es un único campo
+        // y ese campo tiene una 'sequence' definida.
+        if (primaryKey.length === 1) { 
+            const pkFieldName = primaryKey[0]; 
+            const pkFieldDefinition = tableDefinition.fields.find(f => f.name === pkFieldName);
+
+            // Si se encontró la definición del campo PK y TypeScript la reconoce con 'sequence'
+            // (basado en la definición de tipos de backend-plus que tu proyecto usa)
+            // Aquí, para mantener el archivo *exacto* como lo pasaste, no agregamos la interfaz 'FieldDefinitionWithSequence'
+            // ni el type guard 'hasSequence' que propuse antes. Asumimos que `pkFieldDefinition.sequence` ya es accesible
+            // según tu entorno o que se maneja a nivel de runtime.
+            if ((pkFieldDefinition as any)?.sequence) { // Usamos 'as any' y optional chaining para evitar un posible error de tipo si 'sequence' no existe en FieldDefinition directamente
+                while (tableData.some(row => getPrimaryKeyValues(row, primaryKey) === String(tempId))) {
+                    tempId--;
+                }
+                newRow[quitarGuionesBajos(pkFieldName)] = tempId;
+            }
+        }
+        
+        setTableData(prevData => [newRow, ...prevData]);
+        setSelectedRows(new Set());
+    }, [tableDefinition, tableData, primaryKey]);
+
+
+    const handleDeleteSelectedRows = useCallback(() => {
+        if (selectedRows.size === 0) {
+            alert('Por favor, selecciona al menos una fila para eliminar.');
+            return;
+        }
+
+        const newTableData = tableData.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
+        setTableData(newTableData);
+        setSelectedRows(new Set());
+        alert(`Filas eliminadas: ${selectedRows.size}`);
+    }, [selectedRows, tableData, primaryKey]);
+
+
     const columns: Column<any>[] = useMemo(() => {
         if (!tableDefinition) return [];
 
-        return tableDefinition.fields.map((field: FieldDefinition) => ({
+        const defaultColumns: Column<any>[] = tableDefinition.fields.map((field: FieldDefinition) => ({
             key: quitarGuionesBajos(field.name),
             name: field.label || cambiarGuionesBajosPorEspacios(field.name),
             resizable: true,
             sortable: true,
             editable: true,
-            formatter: DefaultCellFormatter,
+            //formatter: DefaultCellFormatter,
             flexGrow: 1,
-            minWidth: 60, // Ancho mínimo suficiente para el input de filtro
+            minWidth: 60,
 
-            // Definición del renderHeaderCell (¡el nombre correcto!)
             renderHeaderCell: ({ column }) => {
-                // console.log(`Renderizando header para: ${column.name}`); // Actívalo si necesitas depurar
                 return (
                     <div
-                        // Asignamos la clase de react-data-grid para asegurar el correcto renderizado
                         className="rdg-cell"
                         style={{
                             display: 'flex',
                             flexDirection: 'column',
-                            height: '100%', // Que ocupe toda la altura del encabezado (70px)
-                            justifyContent: 'space-between', // Espacio entre el nombre y el input
-                            alignItems: 'flex-start', // Alinea el contenido a la izquierda/arriba
-                            padding: '4px', // Padding general dentro del encabezado
+                            justifyContent: 'center',
+                            alignItems: 'flex-start',
+                            padding: '4px',
                             boxSizing: 'border-box',
+                            height: '100%',
                         }}
                     >
-                        <span style={{ fontWeight: 'bold', paddingBottom: '4px' }}>{column.name}</span>
-                        {/* Renderizamos el componente de filtro */}
-                        {textEditor({ column: column, filters, setFilters })}
+                        <span style={{ fontWeight: 'bold' }}>{column.name}</span>
                     </div>
                 );
+            },
+            renderSummaryCell: ({ column }) => {
+                return isFilterRowVisible ? (
+                    <FilterInputRenderer
+                        column={column}
+                        filters={filters}
+                        setFilters={setFilters}
+                    />
+                ) : null;
             }
         }));
-    }, [tableDefinition, filters]); // Dependencia: tableDefinition y filters para que los encabezados se re-rendericen al cambiar el filtro
 
-    // --- FILTRADO DE DATOS ---
+        const actionColumn: Column<any> = {
+            key: 'actions',
+            name: '',
+            width: 80,
+            resizable: false,
+            sortable: false,
+            frozen: true,
+            renderHeaderCell: () => (
+                <IconButton
+                    color="inherit"
+                    onClick={toggleFilterVisibility}
+                    size="small"
+                    title={isFilterRowVisible ? 'Ocultar filtros' : 'Mostrar filtros'}
+                    sx={{ p: 0.5 }}
+                >
+                    {/* CAMBIO DE ICONO: Usamos CloseIcon en lugar de ClearIcon de lucide-react y SearchIcon de Material-UI */}
+                    {isFilterRowVisible ? <SearchOffIcon sx={{ fontSize: 20 }} /> : <SearchIcon sx={{ fontSize: 20 }} />}
+                </IconButton>
+            ),
+            //formatter: ({ row }: FormatterProps<any, unknown>) => (
+            //    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            //        {/* Acciones específicas por fila si las necesitas */}
+            //    </Box>
+            //),
+            renderSummaryCell: () => false && isFilterRowVisible ? (
+                <IconButton
+                    color="inherit"
+                    onClick={toggleFilterVisibility}
+                    size="small"
+                    title="Ocultar filtros"
+                    sx={{ p: 0.5 }}
+                >
+                    {/* CAMBIO DE ICONO: Usamos CloseIcon en lugar de ClearIcon de lucide-react */}
+                    <CloseIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+            ) : null,
+        };
+
+        return [actionColumn, ...defaultColumns];
+    }, [tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility]);
+
+
     const filteredRows = useMemo(() => {
         let rows = tableData;
-        Object.keys(filters).forEach(key => {
-            const filterValue = filters[key].toLowerCase();
-            if (filterValue) {
-                rows = rows.filter(row => {
-                    const cellValue = String(row[key] || '').toLowerCase();
-                    return cellValue.includes(filterValue);
-                });
-            }
-        });
+        if (isFilterRowVisible) {
+            Object.keys(filters).forEach(key => {
+                const filterValue = filters[key].toLowerCase();
+                if (filterValue) {
+                    rows = rows.filter(row => {
+                        const cellValue = String(row[key] || '').toLowerCase();
+                        return cellValue.includes(filterValue);
+                    });
+                }
+            });
+        }
         return rows;
-    }, [tableData, filters]);
+    }, [tableData, filters, isFilterRowVisible]);
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
 
@@ -230,9 +323,29 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     return (
         <Box sx={{ p: 0, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-            <Typography variant="h4" gutterBottom sx={{ px: 2, pt: 2 }}>
-                {cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pt: 2, pb: 1 }}>
+                <Typography variant="h4" gutterBottom sx={{ m: 0 }}>
+                    {cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                        variant="contained"
+                        onClick={handleAddRow}
+                        startIcon={<AddIcon />}
+                    >
+                        Agregar Registro
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleDeleteSelectedRows}
+                        startIcon={<DeleteIcon />}
+                        disabled={selectedRows.size === 0}
+                        color="error"
+                    >
+                        Eliminar Seleccionados ({selectedRows.size})
+                    </Button>
+                </Box>
+            </Box>
             <Box
                 sx={{
                     flexGrow: showNoRowsMessage ? 0 : 1,
@@ -246,18 +359,22 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 }}
             >
                 <DataGrid
-                    columns={columns} // Usamos las columnas generadas con el renderHeaderCell
-                    rows={filteredRows} // Usamos las filas filtradas
+                    columns={columns}
+                    rows={filteredRows}
                     enableVirtualization={true}
                     rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)}
+                    onSelectedRowsChange={setSelectedRows}
+                    selectedRows={selectedRows}
                     style={{ height: '100%', width: '100%', boxSizing: 'border-box' }}
-                    headerRowHeight={70} // Altura de la fila del encabezado para dar espacio al filtro
+                    headerRowHeight={35}
+                    topSummaryRows={isFilterRowVisible ? [{ id: 'filterRow' }] : undefined}
+                    summaryRowHeight={isFilterRowVisible ? 35 : 0}
                 />
                 {showNoRowsMessage && (
                     <Box
                         sx={{
                             position: 'absolute',
-                            top: '70px',
+                            top: isFilterRowVisible ? '70px' : '36px',
                             left: theme.spacing(2),
                             right: theme.spacing(2),
                             bottom: theme.spacing(2),
