@@ -22,6 +22,8 @@ import InitialRedirectHandler from './components/InitialRedirectHandler';
 import { useAppDispatch } from './store';
 import { setCurrentPath } from './store/routerSlice';
 
+import { SnackbarProvider } from './contexts/SnackbarContext';
+
 
 // LocationTracker (sin cambios)
 const LocationTracker: React.FC = () => {
@@ -80,8 +82,10 @@ const RootApp = () => {
                 <BrowserRouter>
                     <LocationTracker />
                     <AppProvider> 
-                        <App/>
-                        <SessionExpiredMessage />
+                        <SnackbarProvider>
+                            <App/>
+                            <SessionExpiredMessage />
+                        </SnackbarProvider>
                     </AppProvider>
                 </BrowserRouter>
             </PersistGate>
