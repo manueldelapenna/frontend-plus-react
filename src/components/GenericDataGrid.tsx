@@ -3,22 +3,26 @@ import { DataGrid, Column } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus"; 
 
-// CORRECCIÓN: react-router-dom es la importación correcta.
 import { useParams } from 'react-router-dom';
 import { fetchApi } from '../utils/fetchApi';
 import { CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton } from '@mui/material';
 import { quitarGuionesBajos, cambiarGuionesBajosPorEspacios } from '../utils/functions';
 
-// --- CAMBIO DE ICONOS: Importar de Material-UI en lugar de lucide-react ---
 import SearchIcon from '@mui/icons-material/Search';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
-import CloseIcon from '@mui/icons-material/Close'; // Usamos CloseIcon como equivalente a X de lucide-react
-import AddIcon from '@mui/icons-material/Add';     // Equivalente a PlusIcon
-import DeleteIcon from '@mui/icons-material/Delete'; // Equivalente a Trash2Icon
-// --- FIN CAMBIO DE ICONOS ---
+import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-const getPrimaryKeyValues = (row: any, primaryKey: string[]): string => {
-    return primaryKey.map(key => row[key]).join('-');
+import { useSnackbar } from '../contexts/SnackbarContext'; // ¡Importa el hook!
+
+
+//investigar mejor para ver como tiene que andar en la grilla
+const getPrimaryKeyValues = (row: any, primaryKey: string[]): any => {
+    // CORRECCIÓN: getPrimaryKeyValues debería devolver un string único
+    // para usarlo con ReadonlySet de selectedRows.
+    // Opcional: concatenar valores de PK con un separador si la PK es compuesta.
+    return primaryKey.map(key => row[quitarGuionesBajos(key)]).join('|');
 };
 
 interface GenericDataGridProps {
@@ -29,6 +33,15 @@ interface FilterRendererProps<R, S> {
     column: Column<R, S>;
     filters: Record<string, string>;
     setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}
+
+interface InputRendererProps<R, S> {
+    column: Column<R, S>,
+    row: any,
+    rowIdx: number;
+    onRowChange: (row: R, commitChanges?: boolean) => void;
+    onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void;
+    tableDefinition:TableDefinition,
 }
 
 function FilterInputRenderer<R, S>({
@@ -60,6 +73,128 @@ function FilterInputRenderer<R, S>({
     );
 }
 
+function InputRenderer<R, S>({
+    column,
+    row,
+    tableDefinition,
+    rowIdx,
+    onRowChange,
+    onClose,
+}: InputRendererProps<R, S>) {
+    const tableName = tableDefinition.tableName!;
+    const [value, setValue] = useState(row[column.key]);
+    
+    // Aquí inicializamos el hook de snackbar
+    const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
+
+    useEffect(() => {
+        setValue(row[column.key]);
+    }, [row, column.key]);
+
+    const handleCommit = useCallback(async (currentValue: any, closeEditor: boolean, focusNextCell: boolean) => {
+        
+        const processedNewValue = typeof currentValue === 'string' 
+            ? (currentValue.trim() === '' ? null : currentValue.trim())
+            : currentValue;
+                    
+        if (processedNewValue === row[column.key]) { // Usamos processedNewValue para la comparación
+            console.log("no guardo, son iguales");
+            onClose(false, focusNextCell);
+            return;
+        }
+
+        // Obtener los valores de la clave primaria.
+        // Asegúrate de que los nombres de las claves primarias coincidan con los nombres originales del backend
+        // (es decir, sin quitar guiones bajos si el backend los espera así para las PKs)
+        const primaryKeyValuesForBackend = tableDefinition.primaryKey.map(key => row[key]);
+
+        // *** CAMBIO CLAVE AQUÍ: Crear un objeto con solo los campos modificados (y la PK si la necesitas para el backend) ***
+        const changedFields: Record<string, any> = {
+            [column.key]: processedNewValue
+        };
+
+        const oldRowData = { ...row }; // Mantén oldRowData como la fila completa si tu backend lo necesita para validaciones
+        // Para newRow, si el backend solo necesita los cambios puntuales:
+        // const newRowData = changedFields;
+        // Si el backend aún necesita la fila completa para ciertos casos, pero quieres enviar solo los cambios:
+        // podrías enviar 'changedFields' en un parámetro adicional.
+        // Para este escenario, seguiremos enviando la fila completa actualizada, pero nos aseguraremos de que
+        // `table_record_save` en el backend sepa cómo manejar solo los cambios.
+        // Sin embargo, si quieres que 'newRow' SÓLO contenga los cambios, entonces:
+        // const newRowData = changedFields; // Este es el cambio más directo a tu petición
+
+        try {
+            const body = new URLSearchParams();
+            body.append('table', tableName);
+            body.append('primaryKeyValues', JSON.stringify(primaryKeyValuesForBackend));
+            body.append('newRow', JSON.stringify(changedFields)); // Ahora newRowData solo tiene el campo cambiado
+            body.append('oldRow', JSON.stringify(oldRowData)); // oldRowData sigue siendo la fila completa original
+            body.append('status', 'update');
+
+            const response = await fetchApi(`/table_record_save`, {
+                method: 'POST',
+                body: body
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                showError(`Error al guardar el registro: ${response.status} - ${errorText}`);
+                throw new Error(`Error al guardar el registro: ${response.status} - ${errorText}`);
+            }
+            const rawResponseTextData = await response.text();
+            const jsonRespuesta = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
+            if(jsonRespuesta.error){
+                showError(`Error ${jsonRespuesta.error.code}. ${jsonRespuesta.error.message}.`);
+            } else {
+                // Si la respuesta del backend incluye la fila completa actualizada, úsala.
+                // Si no, asume que tu `updatedRow` local es suficiente.
+                showSuccess('Registro guardado exitosamente!');
+                onRowChange({ ...row, [column.key]: processedNewValue } as R, true); // Actualiza la fila localmente con el nuevo valor
+            }
+            if (closeEditor) {
+                onClose(true, focusNextCell);
+            }
+
+        } catch (err: any) {
+            console.error('Error al guardar el registro:', err);
+            showError(`Fallo inesperado al guardar: ${err.message || 'Error desconocido'}`);
+            onClose(false, focusNextCell);
+        }
+    }, [column, row, onRowChange, onClose, tableName, tableDefinition.primaryKey, showSuccess, showError]);
+
+    const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key === 'Enter') {
+            handleCommit(value, true, true);
+            event.preventDefault();
+        }
+    }, [handleCommit, value]);
+
+    const handleBlur = useCallback(() => {
+        handleCommit(value, true, false);
+    }, [handleCommit, value]);
+
+    return (
+        <InputBase
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            placeholder={''}
+            sx={{
+                width: '100%',
+                margin: '0',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                padding: '2px 4px',
+                fontSize: '0.8rem',
+                boxSizing: 'border-box',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            autoFocus
+        />
+    );
+}
+
 const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
@@ -70,8 +205,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
     const [filters, setFilters] = useState<Record<string, string>>({});
     const [selectedRows, setSelectedRows] = useState((): ReadonlySet<string> => new Set());
-
-    const theme = useTheme();
+    
+    // Aquí inicializamos el hook de snackbar
+    const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
 
     useEffect(() => {
         setFilters({});
@@ -81,49 +217,55 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     useEffect(() => {
         if (!tableName) {
-            setError("Nombre de tabla no especificado en la URL.");
+            // Reemplaza setError con showError para un feedback más integrado
+            showError("Nombre de tabla no especificado en la URL."); 
             setLoading(false);
             return;
         }
 
         const fetchDataAndDefinition = async () => {
             setLoading(true);
-            setError(null);
+            setError(null); // Puedes mantener este setError si aún quieres un mensaje grande en la UI, pero el snackbar es el feedback principal
             setTableDefinition(null);
             setTableData([]);
 
             try {
-                const bodyDefinition = new URLSearchParams({ table: tableName });
+                const bodyStructure = new URLSearchParams({ table: tableName });
                 const responseDefinition = await fetchApi(`/table_structure`, {
                     method: 'POST',
-                    body: bodyDefinition
+                    body: bodyStructure
                 });
 
                 if (!responseDefinition.ok) {
                     const errorText = await responseDefinition.text();
+                    // Utiliza showError aquí
+                    showError(`Error al cargar la estructura de la tabla '${tableName}': ${responseDefinition.status} - ${errorText}`);
                     throw new Error(`Error al cargar la estructura de la tabla '${tableName}': ${responseDefinition.status} - ${errorText}`);
                 }
                 const rawResponseTextDefinition = await responseDefinition.text();
                 const definition: TableDefinition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
                 setTableDefinition(definition);
 
-                const bodyData = new URLSearchParams({ table: tableName });
+                const bodyDefinition = new URLSearchParams({ table: tableName });
                 const responseData = await fetchApi(`/table_data`, {
                     method: 'POST',
-                    body: bodyData
+                    body: bodyDefinition
                 });
 
                 if (!responseData.ok) {
                     const errorText = await responseData.text();
+                    // Utiliza showError aquí
+                    showError(`Error al cargar datos de '${tableName}': ${responseData.status} - ${errorText}`);
                     throw new Error(`Error al cargar datos de '${tableName}': ${responseData.status} - ${errorText}`);
                 }
                 const rawResponseTextData = await responseData.text();
                 const data = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
                 setTableData(data);
-
             } catch (err: any) {
                 console.error('Error al cargar datos de la tabla:', err);
-                setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`);
+                // Ya se llamó a showError si es un error de fetch, pero puedes mantener el setError si tienes un componente Alert
+                // que muestra este `error` de forma permanente en la UI.
+                setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`); // Mantiene el Alert visible si quieres
                 setTableDefinition(null);
                 setTableData([]);
             } finally {
@@ -132,7 +274,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         };
 
         fetchDataAndDefinition();
-    }, [tableName]);
+    }, [tableName, showError, showSuccess]); // Asegúrate de incluir los métodos del snackbar en las dependencias
 
     const primaryKey = useMemo(() => {
         if (!tableDefinition) return ['id'];
@@ -143,55 +285,98 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         setIsFilterRowVisible(prev => {
             if (prev) {
                 setFilters({});
+                showInfo('Filtros limpiados y ocultados.'); // Mensaje al ocultar filtros
+            } else {
+                showInfo('Filtros mostrados.'); // Mensaje al mostrar filtros
             }
             return !prev;
         });
-    }, []);
+    }, [showInfo]); // Añade showInfo a las dependencias
 
     const handleAddRow = useCallback(() => {
-        if (!tableDefinition) return;
+        if (!tableDefinition) {
+            showWarning('No se puede agregar una fila sin la definición de la tabla.'); // Mensaje de advertencia
+            return;
+        }
 
         const newRow: Record<string, any> = {};
         tableDefinition.fields.forEach(field => {
             newRow[quitarGuionesBajos(field.name)] = null;
         });
-
-        let tempId = -1;
-        // Esta lógica de generación de ID temporal solo aplica si la clave primaria es un único campo
-        // y ese campo tiene una 'sequence' definida.
+        
+        // Lógica para ID temporal si es necesario
         if (primaryKey.length === 1) { 
             const pkFieldName = primaryKey[0]; 
             const pkFieldDefinition = tableDefinition.fields.find(f => f.name === pkFieldName);
-
-            // Si se encontró la definición del campo PK y TypeScript la reconoce con 'sequence'
-            // (basado en la definición de tipos de backend-plus que tu proyecto usa)
-            // Aquí, para mantener el archivo *exacto* como lo pasaste, no agregamos la interfaz 'FieldDefinitionWithSequence'
-            // ni el type guard 'hasSequence' que propuse antes. Asumimos que `pkFieldDefinition.sequence` ya es accesible
-            // según tu entorno o que se maneja a nivel de runtime.
-            if ((pkFieldDefinition as any)?.sequence) { // Usamos 'as any' y optional chaining para evitar un posible error de tipo si 'sequence' no existe en FieldDefinition directamente
-                while (tableData.some(row => getPrimaryKeyValues(row, primaryKey) === String(tempId))) {
-                    tempId--;
-                }
-                newRow[quitarGuionesBajos(pkFieldName)] = tempId;
+            if ((pkFieldDefinition as any)?.sequence) { 
+                // Aquí, si generas un ID temporal, quizás quieras mostrar un info:
+                showInfo('Nueva fila agregada con un ID temporal. Guarda para persistir.');
             }
         }
         
         setTableData(prevData => [newRow, ...prevData]);
         setSelectedRows(new Set());
-    }, [tableDefinition, tableData, primaryKey]);
+        showSuccess('Nueva fila agregada localmente.'); // Mensaje de éxito
+    }, [tableDefinition, primaryKey, showWarning, showInfo, showSuccess]); // Añade métodos del snackbar a las dependencias
 
 
-    const handleDeleteSelectedRows = useCallback(() => {
+    const handleDeleteSelectedRows = useCallback(async () => {
         if (selectedRows.size === 0) {
-            alert('Por favor, selecciona al menos una fila para eliminar.');
+            showWarning('Por favor, selecciona al menos una fila para eliminar.');
             return;
         }
 
-        const newTableData = tableData.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
-        setTableData(newTableData);
-        setSelectedRows(new Set());
-        alert(`Filas eliminadas: ${selectedRows.size}`);
-    }, [selectedRows, tableData, primaryKey]);
+        if (!tableDefinition) {
+            showError('No se puede eliminar filas sin la definición de la tabla.');
+            return;
+        }
+
+        // Obtener los valores de la clave primaria de las filas seleccionadas
+        const primaryKeyValuesToDelete: any[] = [];
+        const rowsToDelete: any[] = [];
+        tableData.forEach(row => {
+            const pkValue = getPrimaryKeyValues(row, primaryKey);
+            if (selectedRows.has(pkValue)) {
+                primaryKeyValuesToDelete.push(row); // Envía la fila completa o solo la PK
+                rowsToDelete.push(row);
+            }
+        });
+
+        if (primaryKeyValuesToDelete.length === 0) {
+            showWarning('No se encontraron filas seleccionadas para eliminar.');
+            return;
+        }
+
+        try {
+            const body = new URLSearchParams();
+            body.append('table', tableName!); // tableName no será nulo aquí
+            body.append('rowsToDelete', JSON.stringify(rowsToDelete)); // Envía las filas o un identificador claro
+            body.append('status', 'delete');
+
+            const response = await fetchApi(`/table_record_delete`, {
+                method: 'POST',
+                body: body
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                showError(`Error al eliminar las filas: ${response.status} - ${errorText}`);
+                throw new Error(`Error al eliminar las filas: ${response.status} - ${errorText}`);
+            }
+
+            const message = await response.text();
+            console.log('Filas eliminadas exitosamente:', message);
+            showSuccess(`Filas eliminadas exitosamente: ${selectedRows.size}`);
+
+            const newTableData = tableData.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
+            setTableData(newTableData);
+            setSelectedRows(new Set());
+
+        } catch (err: any) {
+            console.error('Error al eliminar filas:', err);
+            showError(`Fallo inesperado al eliminar: ${err.message || 'Error desconocido'}`);
+        }
+    }, [selectedRows, tableData, primaryKey, tableName, tableDefinition, showWarning, showError, showSuccess]);
 
 
     const columns: Column<any>[] = useMemo(() => {
@@ -202,11 +387,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             name: field.label || cambiarGuionesBajosPorEspacios(field.name),
             resizable: true,
             sortable: true,
-            editable: true,
-            //formatter: DefaultCellFormatter,
+            editable: true, // asumiendo que siempre es editable para usar tu InputRenderer
             flexGrow: 1,
             minWidth: 60,
-
             renderHeaderCell: ({ column }) => {
                 return (
                     <div
@@ -233,7 +416,8 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         setFilters={setFilters}
                     />
                 ) : null;
-            }
+            },
+            renderEditCell: field.editable ? (props) => <InputRenderer {...props} tableDefinition={tableDefinition} /> : undefined,
         }));
 
         const actionColumn: Column<any> = {
@@ -251,15 +435,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     title={isFilterRowVisible ? 'Ocultar filtros' : 'Mostrar filtros'}
                     sx={{ p: 0.5 }}
                 >
-                    {/* CAMBIO DE ICONO: Usamos CloseIcon en lugar de ClearIcon de lucide-react y SearchIcon de Material-UI */}
                     {isFilterRowVisible ? <SearchOffIcon sx={{ fontSize: 20 }} /> : <SearchIcon sx={{ fontSize: 20 }} />}
                 </IconButton>
             ),
-            //formatter: ({ row }: FormatterProps<any, unknown>) => (
-            //    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-            //        {/* Acciones específicas por fila si las necesitas */}
-            //    </Box>
-            //),
             renderSummaryCell: () => false && isFilterRowVisible ? (
                 <IconButton
                     color="inherit"
@@ -268,7 +446,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     title="Ocultar filtros"
                     sx={{ p: 0.5 }}
                 >
-                    {/* CAMBIO DE ICONO: Usamos CloseIcon en lugar de ClearIcon de lucide-react */}
                     <CloseIcon sx={{ fontSize: 20 }} />
                 </IconButton>
             ) : null,
@@ -295,6 +472,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     }, [tableData, filters, isFilterRowVisible]);
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
+    
+    const handleRowsChange = useCallback((updatedRows: any[]) => {
+        setTableData(updatedRows);
+    }, []);
 
     if (loading) {
         return (
@@ -306,6 +487,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     }
 
     if (error) {
+        // Aquí puedes decidir si quieres que el error se muestre solo en el snackbar
+        // o si quieres mantener el Alert grande en la UI.
+        // Si lo mantienes, el usuario verá ambos.
         return (
             <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
                 <Alert severity="error">{error}</Alert>
@@ -314,6 +498,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     }
 
     if (!tableDefinition) {
+        // Similar al caso anterior, si quieres un mensaje grande además del snackbar.
         return (
             <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
                 <Alert severity="warning">No se pudo cargar la definición de la tabla.</Alert>
@@ -337,7 +522,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     </Button>
                     <Button
                         variant="contained"
-                        onClick={handleDeleteSelectedRows}
+                        onClick={handleDeleteSelectedRows} // Habilitamos el onClick aquí
                         startIcon={<DeleteIcon />}
                         disabled={selectedRows.size === 0}
                         color="error"
@@ -362,8 +547,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     columns={columns}
                     rows={filteredRows}
                     enableVirtualization={true}
-                    rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)}
+                    rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)} // Asegúrate de que esto funcione con tu getPrimaryKeyValues
                     onSelectedRowsChange={setSelectedRows}
+                    onRowsChange={handleRowsChange}
                     selectedRows={selectedRows}
                     style={{ height: '100%', width: '100%', boxSizing: 'border-box' }}
                     headerRowHeight={35}
@@ -375,9 +561,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         sx={{
                             position: 'absolute',
                             top: isFilterRowVisible ? '70px' : '36px',
-                            left: theme.spacing(2),
-                            right: theme.spacing(2),
-                            bottom: theme.spacing(2),
+                            left: theme => theme.spacing(2),
+                            right: theme => theme.spacing(2),
+                            bottom: theme => theme.spacing(2),
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
