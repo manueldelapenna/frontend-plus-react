@@ -31,7 +31,7 @@ const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined
 
 // Valores por defecto para la duración (en milisegundos)
 const DEFAULT_SUCCESS_DURATION = 3000; 
-const DEFAULT_ERROR_DURATION = 10000;   
+const DEFAULT_ERROR_DURATION = 5000;   
 
 // Proveedor del contexto
 interface SnackbarProviderProps {
