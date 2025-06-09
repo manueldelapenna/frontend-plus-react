@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { DataGrid, Column, RowsChangeData, DataGridHandle, SelectCellOptions } from 'react-data-grid'; // Importamos DataGridHandle y SelectCellOptions
+import { DataGrid, Column, RowsChangeData, DataGridHandle, SelectCellOptions, CellKeyDownArgs, CellMouseArgs } from 'react-data-grid'; // Importamos CellClickArgs
 import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus";
 
@@ -123,9 +123,15 @@ function InputRenderer<R extends Record<string, any>, S>({
             [column.key]: processedNewValue
         };
         const oldRowData = { ...row };
-        const currentRowId = getPrimaryKeyValues(row, tableDefinition.primaryKey);
+        
+        // CUIDADO: currentRowId se calcula con los valores de la fila ANTES de la actualización
+        // Necesitamos un ID después de la actualización si la PK ha cambiado
+        const currentRowIdBeforeUpdate = getPrimaryKeyValues(row, tableDefinition.primaryKey);
 
-        onRowChange({ ...row, [column.key]: processedNewValue } as R, true);
+        // Primero, actualizamos la fila en el estado local de la grilla
+        // Esta nueva fila (tempUpdatedRow) contendrá el valor de la celda recién editada
+        const tempUpdatedRow = { ...row, [column.key]: processedNewValue } as R;
+        onRowChange(tempUpdatedRow, true);
         onClose(true, focusNextCell);
 
         try {
@@ -144,8 +150,8 @@ function InputRenderer<R extends Record<string, any>, S>({
             if (!response.ok) {
                 const errorText = await response.text();
                 showError(`Error ${response.status}: ${errorText}`);
-                setCellFeedback({ rowId: currentRowId, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true);
+                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // Usamos el ID original para el error
+                onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
                 throw new Error(`Error al guardar el registro: ${response.status} - ${errorText}`);
             }
             const rawResponseTextData = await response.text();
@@ -153,18 +159,25 @@ function InputRenderer<R extends Record<string, any>, S>({
 
             if (jsonRespuesta.error) {
                 showError(`Error ${jsonRespuesta.error.code}: ${jsonRespuesta.error.message}`);
-                setCellFeedback({ rowId: currentRowId, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true);
+                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // Usamos el ID original para el error
+                onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
             } else {
                 showSuccess('Registro guardado exitosamente!');
-                setCellFeedback({ rowId: currentRowId, columnKey: column.key, type: 'success' });
+                // Si la edición fue un éxito y la columna es parte de la PK,
+                // calculamos el nuevo rowId para el feedback
+                const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
+                const rowIdAfterUpdate = isPrimaryKeyColumn 
+                    ? getPrimaryKeyValues(tempUpdatedRow, tableDefinition.primaryKey)
+                    : currentRowIdBeforeUpdate; // Si no es PK, el ID no cambia
+                
+                setCellFeedback({ rowId: rowIdAfterUpdate, columnKey: column.key, type: 'success' });
             }
 
         } catch (err: any) {
             console.error('Error al guardar el registro:', err);
             showError(`Fallo inesperado al guardar: ${err.message || 'Error desconocido'}`);
-            setCellFeedback({ rowId: currentRowId, columnKey: column.key, type: 'error' });
-            onRowChange(oldRowData as R, true);
+            setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // En caso de error, siempre usamos el ID original
+            onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
         }
     }, [column, row, onRowChange, tableName, tableDefinition.primaryKey, showSuccess, showError, setCellFeedback, onClose]);
 
@@ -596,6 +609,20 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         setTableData(updatedRows);
     }, []);
 
+    const handleCellClick = useCallback((args: CellMouseArgs<any, { id: string }>) => {
+        // args.column ya es de tipo CalculatedColumn, que tiene la propiedad 'idx'
+        const fieldDefinition = tableDefinition?.fields.find(f => f.name === args.column.key);
+        const isEditable = fieldDefinition?.editable !== false;
+    
+        // Puedes acceder a idx a través de args.column.idx
+        console.log("Clicked column index:", args.column.idx);
+        console.log("Clicked row index:", args.rowIdx);
+    
+        // ... (el resto de tu lógica para handleCellClick) ...
+    
+    }, [tableDefinition]);
+
+
     if (loading) {
         return (
             <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
@@ -671,6 +698,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     headerRowHeight={35}
                     topSummaryRows={isFilterRowVisible ? [{ id: 'filterRow' }] : undefined}
                     summaryRowHeight={isFilterRowVisible ? 35 : 0}
+                    onCellClick={handleCellClick}
                 />
                 {showNoRowsMessage && (
                     <Box
