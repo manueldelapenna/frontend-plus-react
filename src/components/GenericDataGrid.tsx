@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { DataGrid, Column, RowsChangeData } from 'react-data-grid';
+import { DataGrid, Column, RowsChangeData, DataGridHandle, SelectCellOptions } from 'react-data-grid'; // Importamos DataGridHandle y SelectCellOptions
 import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus";
 
@@ -26,7 +26,6 @@ import { useSnackbar } from '../contexts/SnackbarContext';
 const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string[]): string => {
     return primaryKey
         .map(key => {
-            //const normalizedKey = quitarGuionesBajos(key);
             return row[key] !== undefined && row[key] !== null
                 ? String(row[key])
                 : 'NULL_OR_UNDEFINED';
@@ -52,6 +51,7 @@ interface InputRendererProps<R extends Record<string, any>, S> {
     onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void;
     tableDefinition: TableDefinition,
     setCellFeedback: (feedback: CellFeedback | null) => void;
+    onEnterPress?: (rowIndex: number, columnKey: string) => void; // Nueva prop
 }
 
 interface CellFeedback {
@@ -74,7 +74,6 @@ function FilterInputRenderer<R extends Record<string, any>, S>({
                     [column.key]: e.target.value
                 })
             }
-            //placeholder={`Filtrar...`}
             sx={{
                 width: '100%',
                 margin: '0',
@@ -92,13 +91,15 @@ function FilterInputRenderer<R extends Record<string, any>, S>({
 function InputRenderer<R extends Record<string, any>, S>({
     column,
     row,
+    rowIdx,
     tableDefinition,
     onRowChange,
     onClose,
     setCellFeedback,
+    onEnterPress
 }: InputRendererProps<R, S>) {
     const tableName = tableDefinition.tableName!;
-    const [value, setValue] = useState(row[column.key]); // El estado local para el editor
+    const [value, setValue] = useState(row[column.key]);
 
     const { showSuccess, showError } = useSnackbar();
 
@@ -168,11 +169,17 @@ function InputRenderer<R extends Record<string, any>, S>({
     }, [column, row, onRowChange, tableName, tableDefinition.primaryKey, showSuccess, showError, setCellFeedback, onClose]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-        if (['Enter','Tab'].includes(event.key)) {
+        if (event.key === 'Enter') {
             handleCommit(value, true, true);
             event.preventDefault();
+
+            if (onEnterPress) {
+                onEnterPress(rowIdx, column.key);
+            }
+        } else if (event.key === 'Tab') {
+            handleCommit(value, true, true);
         }
-    }, [handleCommit, value]);
+    }, [handleCommit, value, column.key, rowIdx, onEnterPress]);
 
     const handleBlur = useCallback(() => {
         handleCommit(value, true, false);
@@ -198,8 +205,6 @@ function InputRenderer<R extends Record<string, any>, S>({
                 padding: '2px 4px',
                 fontSize: '0.8rem',
                 boxSizing: 'border-box',
-                backgroundColor: backgroundColor,
-                transition: 'background-color 0.3s ease-in-out',
             }}
             onClick={(e) => e.stopPropagation()}
             autoFocus
@@ -224,6 +229,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
 
     const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const dataGridRef = useRef<DataGridHandle>(null);
 
     useEffect(() => {
         setFilters({});
@@ -340,7 +346,8 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         newRow[primaryKey[0]] = tempId;
         setTableData(prevData => [newRow, ...prevData]);
         setSelectedRows(new Set());
-    }, [tableDefinition, primaryKey, showWarning, showInfo, showSuccess]);
+        showSuccess('Nueva fila agregada localmente.');
+    }, [tableDefinition, primaryKey, showWarning, showSuccess]);
 
 
     const handleDeleteSelectedRows = useCallback(async () => {
@@ -397,6 +404,68 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         }
     }, [selectedRows, tableData, primaryKey, tableName, tableDefinition, showWarning, showError, showSuccess]);
 
+    // filteredRows se define aquí, antes de handleEnterKeyPressInEditor y columns
+    const filteredRows = useMemo(() => {
+        let rows = tableData;
+        if (isFilterRowVisible) {
+            Object.keys(filters).forEach(key => {
+                const filterValue = filters[key].toLowerCase();
+                if (filterValue) {
+                    rows = rows.filter(row => {
+                        const cellValue = String(row[key] || '').toLowerCase();
+                        return cellValue.includes(filterValue);
+                    });
+                }
+            });
+        }
+        return rows;
+    }, [tableData, filters, isFilterRowVisible]);
+
+    // handleEnterKeyPressInEditor necesita acceso a `columns` y `filteredRows`
+    // Para que `columns` esté disponible, la pasaremos como argumento
+    const handleEnterKeyPressInEditor = useCallback((rowIndex: number, columnKey: string, currentColumns: Column<any>[]) => {
+        if (dataGridRef.current && tableDefinition) {
+            const currentColumnIndex = currentColumns.findIndex((col: Column<any>) => col.key === columnKey);
+
+            if (currentColumnIndex !== -1) {
+                let nextColumnIndex = currentColumnIndex + 1;
+                let nextRowIndex = rowIndex;
+
+                let foundNextTarget = false;
+                while (!foundNextTarget) {
+                    if (nextColumnIndex >= currentColumns.length) {
+                        nextColumnIndex = 0; // Vuelve a la primera columna
+                        nextRowIndex++; // Salta a la siguiente fila
+
+                        if (nextRowIndex >= filteredRows.length) {
+                            nextRowIndex = 0;
+                            nextColumnIndex = 0;
+                            // Si se llega al final de la grilla y se vuelve al principio,
+                            // podemos considerar salir del bucle si ya no hay más celdas.
+                            // Esto evita bucles infinitos en tablas vacías o con una sola fila.
+                            if (filteredRows.length === 0 || (rowIndex === 0 && currentColumnIndex === currentColumns.length -1)) {
+                                foundNextTarget = true; // Salimos del bucle si ya recorrimos todo
+                                break; // Salimos del while
+                            }
+                        }
+                    }
+
+                    const nextColumn = currentColumns[nextColumnIndex];
+                    const isEditableField = tableDefinition.fields.find(f => f.name === nextColumn.key)?.editable !== false;
+
+                    // Si es la columna de acciones o no es editable, avanzamos
+                    if (nextColumn.key !== 'actions' && isEditableField) {
+                        foundNextTarget = true;
+                    } else {
+                        nextColumnIndex++;
+                    }
+                }
+                
+                // Mueve el foco a la celda. Esto NO inicia la edición automáticamente.
+                dataGridRef.current.selectCell({ rowIdx: nextRowIndex, idx: nextColumnIndex }, { enableEditor: false, scrollIntoView: true } as SelectCellOptions); 
+            }
+        }
+    }, [filteredRows, tableDefinition]); // Dependencias: filteredRows, tableDefinition
 
     const columns: Column<any>[] = useMemo(() => {
         if (!tableDefinition) return [];
@@ -439,7 +508,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         />
                     ) : null;
                 },
-                // MODIFICACIÓN CLAVE AQUÍ: renderCell
                 renderCell: (props) => {
                     const rowId = getPrimaryKeyValues(props.row, primaryKey);
                     const isFeedbackCell = cellFeedback && cellFeedback.rowId === rowId && cellFeedback.columnKey === props.column.key;
@@ -449,8 +517,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
                     return (
                         <div
-                            // El contenedor principal de la celda es .rdg-cell, que ya tiene `position: relative`.
-                            // Nuestro div interno necesita `position: absolute` y ocupar todo el espacio.
                             style={{
                                 position: 'absolute',
                                 top: 0,
@@ -459,17 +525,17 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                                 height: '100%',
                                 backgroundColor: backgroundColor,
                                 transition: 'background-color 0.3s ease-in-out',
-                                display: 'flex', // Para centrar el contenido si es necesario
-                                alignItems: 'center', // Alinea verticalmente
-                                paddingLeft: '8px', // Mantiene el padding del texto dentro del div
-                                boxSizing: 'border-box', // Asegura que el padding no cause desbordamiento
+                                display: 'flex',
+                                alignItems: 'center',
+                                paddingLeft: '8px',
+                                boxSizing: 'border-box',
                             }}
                         >
                             {props.row[props.column.key] === null ? '' : props.row[props.column.key]}
                         </div>
                     );
                 },
-                renderEditCell: isFieldEditable ? (props) => <InputRenderer {...props} tableDefinition={tableDefinition} setCellFeedback={setCellFeedback} /> : undefined,
+                // renderEditCell se definirá en el paso final
             };
         });
 
@@ -496,25 +562,33 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             ) : null,
         };
 
-        return [actionColumn, ...defaultColumns];
-    }, [tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility, cellFeedback, primaryKey, theme.palette.success.light, theme.palette.error.light]);
+        const allColumns = [actionColumn, ...defaultColumns];
 
+        // Mapea de nuevo para agregar renderEditCell después de que `handleEnterKeyPressInEditor` esté definido.
+        return allColumns.map(col => {
+            if (col.editable) {
+                return {
+                    ...col,
+                    renderEditCell: (props) => {
+                        const fieldDefinition = tableDefinition.fields.find(f => f.name === props.column.key);
+                        const isFieldEditable = fieldDefinition?.editable !== false;
+                        if (!isFieldEditable) return null;
+                        return (
+                            <InputRenderer
+                                {...props}
+                                tableDefinition={tableDefinition}
+                                setCellFeedback={setCellFeedback}
+                                // Aquí pasamos 'columns' para que handleEnterKeyPressInEditor tenga la lista completa
+                                onEnterPress={(rowIndex, columnKey) => handleEnterKeyPressInEditor(rowIndex, columnKey, allColumns)}
+                            />
+                        );
+                    }
+                };
+            }
+            return col;
+        });
 
-    const filteredRows = useMemo(() => {
-        let rows = tableData;
-        if (isFilterRowVisible) {
-            Object.keys(filters).forEach(key => {
-                const filterValue = filters[key].toLowerCase();
-                if (filterValue) {
-                    rows = rows.filter(row => {
-                        const cellValue = String(row[key] || '').toLowerCase();
-                        return cellValue.includes(filterValue);
-                    });
-                }
-            });
-        }
-        return rows;
-    }, [tableData, filters, isFilterRowVisible]);
+    }, [tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility, cellFeedback, primaryKey, theme.palette.success.light, theme.palette.error.light, handleEnterKeyPressInEditor]); // Dependencia de handleEnterKeyPressInEditor
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
 
@@ -585,6 +659,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 }}
             >
                 <DataGrid
+                    ref={dataGridRef}
                     columns={columns}
                     rows={filteredRows}
                     enableVirtualization={true}
