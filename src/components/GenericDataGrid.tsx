@@ -960,13 +960,15 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     {cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                        variant="contained"
-                        onClick={handleAddRow}
-                        startIcon={<AddIcon />}
-                    >
-                        Agregar Registro
-                    </Button>
+                {tableDefinition.allow?.insert && (
+                        <Button
+                            variant="contained"
+                            onClick={handleAddRow}
+                            startIcon={<AddIcon />}
+                        >
+                            Agregar Registro
+                        </Button>
+                    )}
                 </Box>
             </Box>
             <Box
