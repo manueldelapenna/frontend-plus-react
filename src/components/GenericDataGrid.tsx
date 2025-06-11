@@ -5,7 +5,10 @@ import { TableDefinition, FieldDefinition } from "backend-plus";
 
 import { useParams } from 'react-router-dom';
 import { fetchApi } from '../utils/fetchApi';
-import { CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton } from '@mui/material';
+import {
+    CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton,
+    Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
+} from '@mui/material';
 import { quitarGuionesBajos, cambiarGuionesBajosPorEspacios } from '../utils/functions';
 
 import SearchIcon from '@mui/icons-material/Search';
@@ -60,7 +63,7 @@ interface InputRendererProps<R extends Record<string, any>, S> {
 
 interface CellFeedback {
     rowId: string;
-    columnKey: string | null; // MODIFICADO: Puede ser null para indicar toda la fila
+    columnKey: string | null;
     type: 'success' | 'error';
 }
 
@@ -105,7 +108,7 @@ function InputRenderer<R extends Record<string, any>, S>({
     onEnterPress,
     setTableData,
     setLocalCellChanges,
-    localCellChanges, // Recibido como prop
+    localCellChanges,
     primaryKey
 }: InputRendererProps<R, S>) {
     const tableName = tableDefinition.tableName!;
@@ -114,9 +117,6 @@ function InputRenderer<R extends Record<string, any>, S>({
     const { showSuccess, showError } = useSnackbar();
 
     const initialRowId = useMemo(() => getPrimaryKeyValues(row, primaryKey), [row, primaryKey]);
-    
-    // El useEffect que causaba el blanqueo ha sido eliminado.
-    // El editingValue se inicializa una sola vez al montar el componente.
 
     const handleCommit = useCallback(async (currentValue: any, closeEditor: boolean, focusNextCell: boolean) => {
         const processedNewValue = typeof currentValue === 'string'
@@ -124,13 +124,11 @@ function InputRenderer<R extends Record<string, any>, S>({
             : currentValue;
 
         const potentialUpdatedRow = { ...row, [column.key]: processedNewValue } as R;
-        
-        // MODIFICACIÓN: Lógica mejorada para determinar si es una fila nueva
-        const arePKValuesFilled = tableDefinition.primaryKey.every(key => 
+
+        const arePKValuesFilled = tableDefinition.primaryKey.every(key =>
             potentialUpdatedRow[key] !== undefined && potentialUpdatedRow[key] !== null && String(potentialUpdatedRow[key]).trim() !== ''
         );
         const isNewRow = !arePKValuesFilled || potentialUpdatedRow[NEW_ROW_INDICATOR];
-        // FIN MODIFICACIÓN
 
         const isMandatoryField = tableDefinition.primaryKey.includes(column.key) || (tableDefinition.fields.find(f => f.name === column.key)?.nullable === false);
         const isMandatoryFieldEmpty = isNewRow && isMandatoryField && (processedNewValue === null || processedNewValue === undefined || String(processedNewValue).trim() === '');
@@ -204,34 +202,28 @@ function InputRenderer<R extends Record<string, any>, S>({
             let rowToSend: Record<string, any> = {};
 
             if (isNewRow) {
-                // Para una nueva fila, enviar todos los campos que tienen valor
-                // y los de la PK (incluso si no tienen valor todavía, si es el caso)
                 tableDefinition.fields.forEach(fieldDef => {
                     const fieldValue = potentialUpdatedRow[fieldDef.name];
                     if (fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== '') {
                         rowToSend[fieldDef.name] = fieldValue;
                     } else if (tableDefinition.primaryKey.includes(fieldDef.name) && (fieldValue === null || fieldValue === undefined || String(fieldValue).trim() === '')) {
-                         // Si es PK y está vacío, asegurarse de que se envía como null/vacío para que el backend lo maneje
                         rowToSend[fieldDef.name] = fieldValue;
                     }
                 });
-                 // Asegurarse de que cualquier campo que ya haya sido marcado localmente y que ahora esté vacío, también se envíe como tal
-                if (localCellChanges.has(initialRowId)) { // Accediendo a la prop
-                    localCellChanges.get(initialRowId)?.forEach((colKey: string) => { // Especificando el tipo de colKey
-                        if (!rowToSend.hasOwnProperty(colKey)) { // Si no se agregó ya por el forEach de fields
-                             rowToSend[colKey] = potentialUpdatedRow[colKey];
+                if (localCellChanges.has(initialRowId)) {
+                    localCellChanges.get(initialRowId)?.forEach((colKey: string) => {
+                        if (!rowToSend.hasOwnProperty(colKey)) {
+                            rowToSend[colKey] = potentialUpdatedRow[colKey];
                         }
                     });
                 }
-                delete rowToSend[NEW_ROW_INDICATOR]; // Asegurar que la marca interna no se envíe al backend
+                delete rowToSend[NEW_ROW_INDICATOR];
             } else {
-                // Para una actualización de fila existente, solo el campo modificado y las PK
                 rowToSend[column.key] = processedNewValue;
                 tableDefinition.primaryKey.forEach(pkField => {
                     rowToSend[pkField] = potentialUpdatedRow[pkField];
                 });
             }
-            
 
             const body = new URLSearchParams();
             body.append('table', tableName);
@@ -245,7 +237,6 @@ function InputRenderer<R extends Record<string, any>, S>({
                 body: body
             });
 
-            // Se elimina la marca de cambio local de la celda que se acaba de guardar
             setLocalCellChanges(prev => {
                 const newMap = new Map(prev);
                 const columnKeys = newMap.get(initialRowId);
@@ -264,7 +255,7 @@ function InputRenderer<R extends Record<string, any>, S>({
                 const errorText = await response.text();
                 showError(`Error ${response.status}: ${errorText}`);
                 setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error
+                onRowChange(oldRowData as R, true);
                 throw new Error(`Error al guardar el registro: ${response.status} - ${errorText}`);
             }
             const rawResponseTextData = await response.text();
@@ -273,10 +264,10 @@ function InputRenderer<R extends Record<string, any>, S>({
             if (jsonRespuesta.error) {
                 showError(`Error ${jsonRespuesta.error.code}: ${jsonRespuesta.error.message}`);
                 setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error del backend
+                onRowChange(oldRowData as R, true);
             } else {
                 showSuccess('Registro guardado exitosamente!');
-                
+
                 let finalRowIdForFeedback: string;
                 let persistedRowData: R;
 
@@ -289,51 +280,37 @@ function InputRenderer<R extends Record<string, any>, S>({
                         if (rowIndex !== -1) {
                             newData[rowIndex] = persistedRowData;
                         } else {
-                            // Esto no debería pasar si initialRowId es correcto
                             console.warn("Fila no encontrada para actualizar después de la inserción. Podría haber un problema de sincronización.");
-                            // Podríamos intentar buscarla por la PK generada en persistedRowData si el ID inicial era temporal
                             const newPrimaryKeyId = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
                             const newRowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === newPrimaryKeyId);
-                             if (newRowIndex !== -1) {
+                            if (newRowIndex !== -1) {
                                 newData[newRowIndex] = persistedRowData;
-                             }
+                            }
                         }
                         return newData;
                     });
                     finalRowIdForFeedback = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
                 } else {
-                    persistedRowData = potentialUpdatedRow; 
+                    persistedRowData = potentialUpdatedRow;
                     const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
-                    finalRowIdForFeedback = isPrimaryKeyColumn 
+                    finalRowIdForFeedback = isPrimaryKeyColumn
                         ? getPrimaryKeyValues(potentialUpdatedRow, tableDefinition.primaryKey)
                         : currentRowIdBeforeUpdate;
                 }
-                
-                // MODIFICACIÓN DEL FEEDBACK: Establecer la clave de la columna para feedback de éxito
-                setCellFeedback({ rowId: finalRowIdForFeedback, columnKey: column.key, type: 'success' }); 
+
+                setCellFeedback({ rowId: finalRowIdForFeedback, columnKey: column.key, type: 'success' });
             }
 
         } catch (err: any) {
             console.error('Error al guardar el registro:', err);
             showError(`Fallo inesperado al guardar: ${err.message || 'Error desconocido'}`);
             setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
-            onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error en el fetch
+            onRowChange(oldRowData as R, true);
         }
     }, [
-        column,
-        row,
-        onRowChange,
-        tableName,
-        tableDefinition.primaryKey,
-        tableDefinition.fields,
-        showSuccess,
-        showError,
-        setCellFeedback,
-        onClose,
-        setTableData,
-        setLocalCellChanges,
-        localCellChanges, // Añadido como dependencia
-        initialRowId
+        column, row, onRowChange, tableName, tableDefinition.primaryKey,
+        tableDefinition.fields, showSuccess, showError, setCellFeedback, onClose,
+        setTableData, setLocalCellChanges, localCellChanges, initialRowId
     ]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -379,6 +356,41 @@ function InputRenderer<R extends Record<string, any>, S>({
     );
 }
 
+// Nuevo componente para el diálogo de confirmación
+interface ConfirmDialogProps {
+    open: boolean;
+    onClose: (confirm: boolean) => void;
+    title: string;
+    message: string;
+}
+
+const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ open, onClose, title, message }) => {
+    return (
+        <Dialog
+            open={open}
+            onClose={() => onClose(false)}
+            aria-labelledby="confirm-dialog-title"
+            aria-describedby="confirm-dialog-description"
+        >
+            <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
+            <DialogContent>
+                <DialogContentText id="confirm-dialog-description">
+                    {message}
+                </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => onClose(false)} color="primary">
+                    Cancelar
+                </Button>
+                <Button onClick={() => onClose(true)} color="error" autoFocus>
+                    Confirmar
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+
 const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
@@ -393,6 +405,12 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const [localCellChanges, setLocalCellChanges] = useState<Map<string, Set<string>>>(new Map());
     const theme = useTheme();
 
+    // Estados para el diálogo de confirmación
+    const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+    const [rowToDelete, setRowToDelete] = useState<any | null>(null);
+    // Nuevo estado para controlar las filas que están en proceso de transición de salida
+    const [exitingRowIds, setExitingRowIds] = useState<Set<string>>(new Set());
+
     const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
 
     const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -400,9 +418,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     // Reinicia estados al cambiar el nombre de la tabla
     useEffect(() => {
-        // Establece loading a true aquí para que el spinner aparezca inmediatamente al cambiar de tabla.
-        // Se inicializa en true arriba, pero si cambias de tabla sin recargar, este hook se encarga.
-        setLoading(true); 
+        setLoading(true);
         setFilters({});
         setIsFilterRowVisible(false);
         setSelectedRows(new Set());
@@ -411,6 +427,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         setTableData([]);
         setCellFeedback(null);
         setLocalCellChanges(new Map());
+        setOpenConfirmDialog(false); // Resetear confirmación
+        setRowToDelete(null); // Resetear fila a borrar
+        setExitingRowIds(new Set()); // Resetear filas en transición
         if (feedbackTimerRef.current) {
             clearTimeout(feedbackTimerRef.current);
         }
@@ -418,18 +437,16 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     // Lógica de carga de datos y definición de la tabla
     useEffect(() => {
-        // Si tableName es undefined al inicio, salimos.
         if (!tableName) {
             showError("Nombre de tabla no especificado en la URL.");
-            setLoading(false); // Asegúrate de que loading se desactive
+            setLoading(false);
             return;
         }
 
         const fetchDataAndDefinition = async () => {
-            setError(null); // Limpiar errores anteriores
+            setError(null);
 
             try {
-                // Fetch de la definición de la tabla
                 const bodyStructure = new URLSearchParams({ table: tableName });
                 const responseDefinition = await fetchApi(`/table_structure`, {
                     method: 'POST',
@@ -447,7 +464,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 const definition: TableDefinition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
                 setTableDefinition(definition);
 
-                // Fetch de los datos de la tabla
                 const bodyData = new URLSearchParams({ table: tableName });
                 const responseData = await fetchApi(`/table_data`, {
                     method: 'POST',
@@ -467,19 +483,18 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
             } catch (err: any) {
                 console.error('Error general al cargar tabla:', err);
-                // Si el error ya fue establecido por showError, no lo sobrescribimos.
-                if (!error) { 
+                if (!error) {
                     setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`);
                 }
                 setTableDefinition(null);
                 setTableData([]);
             } finally {
-                setLoading(false); // Siempre desactiva el estado de carga al finalizar.
+                setLoading(false);
             }
         };
 
         fetchDataAndDefinition();
-    }, [tableName, showError, error]); // `error` se agrega para asegurar que el `if (!error)` funcione correctamente
+    }, [tableName, showError, error]);
 
     useEffect(() => {
         if (cellFeedback) {
@@ -546,85 +561,114 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     }, [tableDefinition, showWarning, primaryKey]);
 
-    const handleDeleteSelectedRows = useCallback(async () => {
-        if (selectedRows.size === 0) {
-            showWarning('Por favor, selecciona al menos una fila para eliminar.');
+    const handleDeleteRow = useCallback(async (row: any) => {
+        setRowToDelete(row);
+        setOpenConfirmDialog(true);
+    }, []);
+
+    const handleConfirmDelete = useCallback(async (confirm: boolean) => {
+        setOpenConfirmDialog(false);
+        if (!confirm || !rowToDelete) {
+            showWarning('Eliminación cancelada por el usuario.');
+            setRowToDelete(null);
             return;
         }
 
         if (!tableDefinition || !tableName) {
-            showError('No se puede eliminar filas sin la definición de la tabla o el nombre de la tabla.');
+            showError('No se puede eliminar la fila sin la definición de la tabla o el nombre de la tabla.');
+            setRowToDelete(null);
             return;
         }
 
-        const rowsToDelete: any[] = [];
-        tableData.forEach(row => {
-            if (selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && !row[NEW_ROW_INDICATOR]) {
-                rowsToDelete.push(row);
-            }
-        });
+        const rowId = getPrimaryKeyValues(rowToDelete, primaryKey);
 
-        // Eliminar inmediatamente las filas NUEVAS (no persistidas) del estado local
-        const newTableDataAfterLocalDelete = tableData.filter(row => 
-            !(selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && row[NEW_ROW_INDICATOR])
-        );
-        setTableData(newTableDataAfterLocalDelete);
+        // Paso 1: Marcar la fila para iniciar la transición de salida
+        // Agrega la fila a exitingRowIds. Esto aplicará los estilos de transición
+        setExitingRowIds(prev => new Set(prev).add(rowId));
 
-        // Limpiar los cambios locales de las filas seleccionadas
-        setLocalCellChanges(prev => {
-            const newMap = new Map(prev);
-            selectedRows.forEach(rowId => {
-                newMap.delete(rowId);
-            });
-            return newMap;
-        });
-
-
-        if (rowsToDelete.length === 0) {
-            if (selectedRows.size > 0 && tableData.some(row => selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && row[NEW_ROW_INDICATOR])) {
-                showInfo('Las filas seleccionadas no guardadas han sido eliminadas localmente.');
-            } else {
-                showWarning('No se encontraron filas guardadas válidas seleccionadas para eliminar.');
-            }
-            setSelectedRows(new Set());
-            return;
-        }
-
-        try {
-            const body = new URLSearchParams();
-            body.append('table', tableName);
-            body.append('rowsToDelete', JSON.stringify(rowsToDelete));
-            body.append('status', 'delete');
-
-            const response = await fetchApi(`/table_record_delete`, {
-                method: 'POST',
-                body: body
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                showError(`Error ${response.status}: ${errorText}`);
-                throw new Error(`Error al eliminar las filas: ${response.status} - ${errorText}`);
+        // Permite un pequeño retraso para que el navegador aplique los estilos iniciales
+        // y luego active la transición a `max-height: 0` y `opacity: 0`.
+        // La duración de este setTimeout (ej. 10ms) es crítica para que la transición se "enganche".
+        setTimeout(async () => { // Hacemos esta función interna async para el fetchApi
+            // Si es una fila nueva, elimínala solo localmente
+            if (rowToDelete[NEW_ROW_INDICATOR]) {
+                setTimeout(() => { // Este setTimeout coincide con la duración de la transición CSS
+                    setTableData(prevData => prevData.filter(row => getPrimaryKeyValues(row, primaryKey) !== rowId));
+                    setLocalCellChanges(prev => {
+                        const newMap = new Map(prev);
+                        newMap.delete(rowId);
+                        return newMap;
+                    });
+                    setSelectedRows(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    setExitingRowIds(prev => { // Quitar de las filas en transición
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    showInfo(`Fila no guardada '${rowId}' eliminada localmente.`);
+                    setRowToDelete(null);
+                }, 500); // Duración de la transición CSS
+                return;
             }
 
-            const message = await response.text();
-            console.log('Backend response:', message);
-            showSuccess(`Filas eliminadas exitosamente: ${rowsToDelete.length}`);
+            // Si es una fila persistida, intenta eliminarla del backend
+            try {
+                const body = new URLSearchParams();
+                body.append('table', tableName);
+                const primaryKeyValues = tableDefinition.primaryKey.map((key)=> rowToDelete[key]);
+                body.append('primaryKeyValues', JSON.stringify(primaryKeyValues));
 
-            // Filtrar las filas que realmente se eliminaron del backend
-            const finalTableData = newTableDataAfterLocalDelete.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
-            setTableData(finalTableData);
-            setSelectedRows(new Set());
+                const response = await fetchApi(`/table_record_delete`, {
+                    method: 'POST',
+                    body: body
+                });
 
-        } catch (err: any) {
-            console.error('Error al eliminar filas:', err);
-            showError(`Fallo inesperado al eliminar: ${err.message || 'Error desconocido'}`);
-            // NOTA: Si falla el borrado en el backend, las filas ya se eliminaron localmente arriba.
-            // Para ser robustos, si la eliminación en el backend falla, deberíamos re-añadir
-            // las filas `rowsToDelete` al `tableData` o volver a cargar los datos.
-            // Por simplicidad, y asumiendo que un error aquí es excepcional, no se revierte automáticamente el estado.
-        }
-    }, [selectedRows, tableData, primaryKey, tableName, tableDefinition, showWarning, showError, showSuccess, showInfo, setLocalCellChanges]);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    showError(`Error al eliminar la fila '${rowId}': ${response.status} - ${errorText}`);
+                    throw new Error(`Error al eliminar la fila: ${errorText}`);
+                }
+
+                console.log(`Fila con ID ${rowId} eliminada exitosamente del backend.`);
+                // Permitir un breve momento para la transición visual
+                setTimeout(() => {
+                    setTableData(prevData => prevData.filter(row => getPrimaryKeyValues(row, primaryKey) !== rowId));
+                    setLocalCellChanges(prev => {
+                        const newMap = new Map(prev);
+                        newMap.delete(rowId);
+                        return newMap;
+                    });
+                    setSelectedRows(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    setExitingRowIds(prev => { // Quitar de las filas en transición
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    showSuccess(`Fila '${rowId}' eliminada exitosamente.`);
+                    setRowToDelete(null);
+                }, 500); // Duración de la transición CSS
+
+            } catch (err: any) {
+                console.error(`Error al eliminar la fila '${rowId}':`, err);
+                showError(`Fallo inesperado al eliminar la fila '${rowId}': ${err.message || 'Error desconocido'}`);
+                setExitingRowIds(prev => { // Quitar de las filas en transición en caso de error
+                    const newSet = new Set(prev);
+                    newSet.delete(rowId);
+                    return newSet;
+                });
+                setRowToDelete(null);
+            }
+        }, 10); // Un pequeño retraso para que la transición se active
+    }, [rowToDelete, tableDefinition, tableName, primaryKey, showInfo, showSuccess, showError, showWarning, setTableData, setLocalCellChanges, setSelectedRows]);
+
 
     const filteredRows = useMemo(() => {
         let rows = tableData;
@@ -659,10 +703,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         if (nextRowIndex >= filteredRows.length) {
                             nextRowIndex = 0;
                             nextColumnIndex = 0;
-                            
-                            // Si se llega al final de la cuadrícula, salir del loop o decidir qué hacer
-                            if (filteredRows.length === 0 || (rowIndex === filteredRows.length - 1 && currentColumnIndex === currentColumns.length -1)) {
-                                foundNextTarget = true; // No hay más celdas a las que ir
+
+                            if (filteredRows.length === 0 || (rowIndex === filteredRows.length - 1 && currentColumnIndex === currentColumns.length - 1)) {
+                                foundNextTarget = true;
                                 break;
                             }
                         }
@@ -673,7 +716,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         const fieldDefinition = tableDefinition.fields.find(f => f.name === nextColumn.key);
                         const isEditableField = fieldDefinition?.editable !== false;
 
-                        if (nextColumn.key !== 'actions' && isEditableField) {
+                        if (nextColumn.key !== 'filterToggle' && nextColumn.key !== 'deleteAction' && isEditableField) {
                             foundNextTarget = true;
                         } else {
                             nextColumnIndex++;
@@ -682,9 +725,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         nextColumnIndex++;
                     }
                 }
-                
+
                 if (foundNextTarget) {
-                    dataGridRef.current.selectCell({ rowIdx: nextRowIndex, idx: nextColumnIndex }, { enableEditor: false, scrollIntoView: true } as SelectCellOptions); 
+                    dataGridRef.current.selectCell({ rowIdx: nextRowIndex, idx: nextColumnIndex }, { enableEditor: false, scrollIntoView: true } as SelectCellOptions);
                 }
             }
         }
@@ -733,23 +776,18 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 },
                 renderCell: (props) => {
                     const rowId = getPrimaryKeyValues(props.row, primaryKey);
-                    
+
                     let backgroundColor = 'transparent';
 
-                    // 1. Feedback de error (prioridad máxima)
                     if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.type === 'error') {
-                        // Si el error es para una celda específica O si es para toda la fila (no debería ser, pero por si acaso)
                         if (cellFeedback.columnKey === props.column.key || cellFeedback.columnKey === null) {
                             backgroundColor = theme.palette.error.light;
                         }
-                    } 
-                    // 2. Feedback de éxito (solo la celda)
+                    }
                     else if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.type === 'success' && cellFeedback.columnKey === props.column.key) {
                         backgroundColor = theme.palette.success.light;
                     }
-                    // 3. Cambios locales pendientes (celeste)
                     else {
-                        // Mejoramos la determinación de si un campo obligatorio en una fila nueva está vacío
                         const isNewRowLocalCheck = props.row[NEW_ROW_INDICATOR];
                         const isMandatory = tableDefinition.primaryKey.includes(props.column.key) || (tableDefinition.fields.find(f => f.name === props.column.key)?.nullable === false);
                         const hasValue = props.row[props.column.key] !== null && props.row[props.column.key] !== undefined && String(props.row[props.column.key]).trim() !== '';
@@ -782,10 +820,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             };
         });
 
-        const actionColumn: Column<any> = {
-            key: 'actions',
+        const filterToggleColumn: Column<any> = {
+            key: 'filterToggle',
             name: '',
-            width: 80,
+            width: 50,
             resizable: false,
             sortable: false,
             frozen: true,
@@ -800,12 +838,45 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     {isFilterRowVisible ? <SearchOffIcon sx={{ fontSize: 20 }} /> : <SearchIcon sx={{ fontSize: 20 }} />}
                 </IconButton>
             ),
-            renderSummaryCell: () => isFilterRowVisible ? (
-                null
-            ) : null,
+            renderSummaryCell: () => null,
         };
 
-        const allColumns = [actionColumn, ...defaultColumns];
+        const deleteActionColumn: Column<any> = {
+            key: 'deleteAction',
+            name: '', // Nombre vacío para el encabezado
+            width: 50, // Ancho ligeramente más grande para el botón sin texto
+            resizable: false,
+            sortable: false,
+            frozen: true,
+            renderHeaderCell: () => null, // No mostrar texto en el encabezado
+            renderSummaryCell: () => null,
+            renderCell: ({ row }) => {
+                if (!tableDefinition.allow?.delete) {
+                    return null;
+                }
+                return (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={() => handleDeleteRow(row)} // Llama a la función que abre el diálogo
+                            title="Eliminar fila"
+                            sx={{
+                                minWidth: 35, // Ajusta el ancho mínimo para el botón
+                                height: 30, // Ajusta la altura
+                                p: 0.5, // Reduce el padding si es necesario
+                                '& .MuiButton-startIcon': { m: 0 } // Elimina el margen del icono si no hay texto
+                            }}
+                        >
+                            <DeleteIcon sx={{ fontSize: 18 }} /> {/* Icono más grande para ser el único elemento */}
+                        </Button>
+                    </Box>
+                );
+            },
+        };
+
+        const allColumns = [filterToggleColumn, deleteActionColumn, ...defaultColumns];
 
         return allColumns.map(col => {
             if (col.editable) {
@@ -824,7 +895,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                                 onEnterPress={(rowIndex, columnKey) => handleEnterKeyPressInEditor(rowIndex, columnKey, allColumns)}
                                 setTableData={setTableData}
                                 setLocalCellChanges={setLocalCellChanges}
-                                localCellChanges={localCellChanges} // Pasando como prop
+                                localCellChanges={localCellChanges}
                                 primaryKey={primaryKey}
                             />
                         );
@@ -835,18 +906,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         });
 
     }, [
-        tableDefinition,
-        isFilterRowVisible,
-        filters,
-        toggleFilterVisibility,
-        cellFeedback,
-        primaryKey,
-        theme.palette.success.light,
-        theme.palette.error.light,
-        theme.palette.info.light,
-        handleEnterKeyPressInEditor,
-        setTableData,
-        localCellChanges
+        tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility,
+        cellFeedback, primaryKey, theme.palette.success.light, theme.palette.error.light,
+        theme.palette.info.light, handleEnterKeyPressInEditor, setTableData,
+        localCellChanges, handleDeleteRow
     ]);
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
@@ -858,7 +921,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const handleCellClick = useCallback((args: CellMouseArgs<any, { id: string }>) => {
         const fieldDefinition = tableDefinition?.fields.find(f => f.name === args.column.key);
         const isEditable = fieldDefinition?.editable !== false;
-        
+
         console.log("Clicked column index:", args.column.idx);
         console.log("Clicked row index:", args.rowIdx);
         console.log("Is editable:", isEditable);
@@ -904,15 +967,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     >
                         Agregar Registro
                     </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleDeleteSelectedRows}
-                        startIcon={<DeleteIcon />}
-                        disabled={selectedRows.size === 0}
-                        color="error"
-                    >
-                        Eliminar Seleccionados ({selectedRows.size})
-                    </Button>
                 </Box>
             </Box>
             <Box
@@ -930,12 +984,23 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 <DataGrid
                     ref={dataGridRef}
                     columns={columns}
-                    rows={filteredRows}
+                    rows={filteredRows.map(row => ({
+                        ...row,
+                        // Aquí aplicamos los estilos inline para la transición
+                        // Si la fila está en exitingRowIds, establecerá max-height: 0 y opacity: 0
+                        // Si no, establecerá un max-height adecuado (ej. 35px, la altura por defecto de la fila)
+                        // y opacity: 1. La transición en el CSS manejará la animación.
+                        style: exitingRowIds.has(getPrimaryKeyValues(row, primaryKey))
+                            ? { maxHeight: 0, opacity: 0, overflow: 'hidden' } // Oculta contenido si se "desliza"
+                            : { maxHeight: '35px', opacity: 1 } // Altura normal de la fila de react-data-grid
+                    }))}
                     enableVirtualization={true}
                     rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)}
                     onSelectedRowsChange={setSelectedRows}
                     onRowsChange={handleRowsChange}
                     selectedRows={selectedRows}
+                    // La altura de la fila se gestionará con maxHeight y la transición
+                    rowHeight={(row) => exitingRowIds.has(getPrimaryKeyValues(row, primaryKey)) ? 0 : 35}
                     style={{ height: '100%', width: '100%', boxSizing: 'border-box' }}
                     headerRowHeight={35}
                     topSummaryRows={isFilterRowVisible ? [{ id: 'filterRow' }] : undefined}
@@ -964,6 +1029,19 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     </Box>
                 )}
             </Box>
+
+            {/* Diálogo de Confirmación */}
+            <ConfirmDialog
+                open={openConfirmDialog}
+                onClose={handleConfirmDelete}
+                title="Confirmar Eliminación"
+                message={rowToDelete && rowToDelete[NEW_ROW_INDICATOR]
+                    ? `¿Estás seguro de que quieres eliminar esta nueva fila (ID: ${getPrimaryKeyValues(rowToDelete, primaryKey)}) localmente?`
+                    : rowToDelete
+                        ? `¿Estás seguro de que quieres eliminar la fila con ID: ${getPrimaryKeyValues(rowToDelete, primaryKey)} de la base de datos? Esta acción es irreversible.`
+                        : '¿Estás seguro de que quieres eliminar este registro? Esta acción es irreversible.'
+                }
+            />
         </Box>
     );
 };
