@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { DataGrid, Column, RowsChangeData, DataGridHandle, SelectCellOptions, CellKeyDownArgs, CellMouseArgs } from 'react-data-grid'; // Importamos CellClickArgs
+import { DataGrid, Column, RowsChangeData, DataGridHandle, SelectCellOptions, CellKeyDownArgs, CellMouseArgs } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus";
 
@@ -28,13 +28,13 @@ const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string[]): st
         .map(key => {
             return row[key] !== undefined && row[key] !== null
                 ? String(row[key])
-                : 'NULL_OR_UNDEFINED';
+                : 'NULL_OR_UNDEFINED'; // Usar un indicador para nulos o indefinidos en PK
         })
         .join('|');
 };
 
 interface GenericDataGridProps {
-    // tableName: string;
+    // tableName: string; // Comentado según tu código original
 }
 
 interface FilterRendererProps<R extends Record<string, any>, S> {
@@ -51,14 +51,20 @@ interface InputRendererProps<R extends Record<string, any>, S> {
     onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void;
     tableDefinition: TableDefinition,
     setCellFeedback: (feedback: CellFeedback | null) => void;
-    onEnterPress?: (rowIndex: number, columnKey: string) => void; // Nueva prop
+    onEnterPress?: (rowIndex: number, columnKey: string) => void;
+    setTableData: React.Dispatch<React.SetStateAction<any[]>>;
+    setLocalCellChanges: React.Dispatch<React.SetStateAction<Map<string, Set<string>>>>;
+    localCellChanges: Map<string, Set<string>>; // Añadido como prop
+    primaryKey: string[];
 }
 
 interface CellFeedback {
     rowId: string;
-    columnKey: string;
+    columnKey: string | null; // MODIFICADO: Puede ser null para indicar toda la fila
     type: 'success' | 'error';
 }
+
+const NEW_ROW_INDICATOR = '.$new'; // Indicador para nuevas filas que aún no están en la base de datos
 
 function FilterInputRenderer<R extends Record<string, any>, S>({
     column,
@@ -96,62 +102,169 @@ function InputRenderer<R extends Record<string, any>, S>({
     onRowChange,
     onClose,
     setCellFeedback,
-    onEnterPress
+    onEnterPress,
+    setTableData,
+    setLocalCellChanges,
+    localCellChanges, // Recibido como prop
+    primaryKey
 }: InputRendererProps<R, S>) {
     const tableName = tableDefinition.tableName!;
-    const [value, setValue] = useState(row[column.key]);
+    const [editingValue, setEditingValue] = useState(row[column.key]);
 
     const { showSuccess, showError } = useSnackbar();
 
-    useEffect(() => {
-        setValue(row[column.key]);
-    }, [row, column.key]);
+    const initialRowId = useMemo(() => getPrimaryKeyValues(row, primaryKey), [row, primaryKey]);
+    
+    // El useEffect que causaba el blanqueo ha sido eliminado.
+    // El editingValue se inicializa una sola vez al montar el componente.
 
     const handleCommit = useCallback(async (currentValue: any, closeEditor: boolean, focusNextCell: boolean) => {
         const processedNewValue = typeof currentValue === 'string'
             ? (currentValue.trim() === '' ? null : currentValue.trim())
             : currentValue;
 
-        if (processedNewValue === row[column.key]) {
-            console.log("No se guardó: el valor no cambió.");
+        const potentialUpdatedRow = { ...row, [column.key]: processedNewValue } as R;
+        
+        // MODIFICACIÓN: Lógica mejorada para determinar si es una fila nueva
+        const arePKValuesFilled = tableDefinition.primaryKey.every(key => 
+            potentialUpdatedRow[key] !== undefined && potentialUpdatedRow[key] !== null && String(potentialUpdatedRow[key]).trim() !== ''
+        );
+        const isNewRow = !arePKValuesFilled || potentialUpdatedRow[NEW_ROW_INDICATOR];
+        // FIN MODIFICACIÓN
+
+        const isMandatoryField = tableDefinition.primaryKey.includes(column.key) || (tableDefinition.fields.find(f => f.name === column.key)?.nullable === false);
+        const isMandatoryFieldEmpty = isNewRow && isMandatoryField && (processedNewValue === null || processedNewValue === undefined || String(processedNewValue).trim() === '');
+
+        if (processedNewValue === row[column.key] && !isNewRow && !isMandatoryFieldEmpty) {
+            console.log("No se guardó: el valor no cambió (y no es una nueva fila o campo obligatorio vacío que se está iniciando).");
             onClose(false, focusNextCell);
+            setLocalCellChanges(prev => {
+                const newMap = new Map(prev);
+                const columnKeys = newMap.get(initialRowId);
+                if (columnKeys) {
+                    columnKeys.delete(column.key);
+                    if (columnKeys.size === 0) {
+                        newMap.delete(initialRowId);
+                    } else {
+                        newMap.set(initialRowId, columnKeys);
+                    }
+                }
+                return newMap;
+            });
             return;
         }
 
-        const primaryKeyValuesForBackend = tableDefinition.primaryKey.map(key => row[key]);
-        const changedFields: Record<string, any> = {
-            [column.key]: processedNewValue
-        };
         const oldRowData = { ...row };
-        
-        // CUIDADO: currentRowId se calcula con los valores de la fila ANTES de la actualización
-        // Necesitamos un ID después de la actualización si la PK ha cambiado
+        const primaryKeyValuesForBackend = tableDefinition.primaryKey.map(key => potentialUpdatedRow[key]);
         const currentRowIdBeforeUpdate = getPrimaryKeyValues(row, tableDefinition.primaryKey);
 
-        // Primero, actualizamos la fila en el estado local de la grilla
-        // Esta nueva fila (tempUpdatedRow) contendrá el valor de la celda recién editada
-        const tempUpdatedRow = { ...row, [column.key]: processedNewValue } as R;
-        onRowChange(tempUpdatedRow, true);
+        onRowChange({ ...row, [column.key]: processedNewValue } as R, true);
         onClose(true, focusNextCell);
 
+        if (isNewRow) {
+            const areAllMandatoryFieldsFilled = tableDefinition.fields.every(fieldDef => {
+                const isMandatory = (fieldDef.nullable === false || fieldDef.isPk);
+                const fieldValue = potentialUpdatedRow[fieldDef.name];
+                return !isMandatory || (fieldValue !== null && fieldValue !== undefined && String(fieldValue).trim() !== '');
+            });
+
+            if (!areAllMandatoryFieldsFilled) {
+                console.log("Nueva fila: Faltan campos obligatorios. No se guarda en el backend todavía.");
+                setLocalCellChanges(prev => {
+                    const newMap = new Map(prev);
+                    const currentColumnsInRow = newMap.get(initialRowId) || new Set();
+
+                    tableDefinition.fields.forEach(fieldDef => {
+                        const isMandatory = (fieldDef.nullable === false || fieldDef.isPk);
+                        const isEditable = fieldDef.editable !== false;
+                        const fieldValue = potentialUpdatedRow[fieldDef.name];
+                        if (isMandatory && isEditable && (fieldValue === null || fieldValue === undefined || String(fieldValue).trim() === '')) {
+                            currentColumnsInRow.add(fieldDef.name);
+                        } else {
+                            currentColumnsInRow.delete(fieldDef.name);
+                        }
+                    });
+                    newMap.set(initialRowId, currentColumnsInRow);
+                    return newMap;
+                });
+                return;
+            } else {
+                console.log("Nueva fila: Todos los campos obligatorios están llenos. Procediendo a guardar.");
+                setLocalCellChanges(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(initialRowId);
+                    return newMap;
+                });
+            }
+        }
+
         try {
+            const status = isNewRow ? 'new' : 'update';
+
+            let rowToSend: Record<string, any> = {};
+
+            if (isNewRow) {
+                // Para una nueva fila, enviar todos los campos que tienen valor
+                // y los de la PK (incluso si no tienen valor todavía, si es el caso)
+                tableDefinition.fields.forEach(fieldDef => {
+                    const fieldValue = potentialUpdatedRow[fieldDef.name];
+                    if (fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== '') {
+                        rowToSend[fieldDef.name] = fieldValue;
+                    } else if (tableDefinition.primaryKey.includes(fieldDef.name) && (fieldValue === null || fieldValue === undefined || String(fieldValue).trim() === '')) {
+                         // Si es PK y está vacío, asegurarse de que se envía como null/vacío para que el backend lo maneje
+                        rowToSend[fieldDef.name] = fieldValue;
+                    }
+                });
+                 // Asegurarse de que cualquier campo que ya haya sido marcado localmente y que ahora esté vacío, también se envíe como tal
+                if (localCellChanges.has(initialRowId)) { // Accediendo a la prop
+                    localCellChanges.get(initialRowId)?.forEach((colKey: string) => { // Especificando el tipo de colKey
+                        if (!rowToSend.hasOwnProperty(colKey)) { // Si no se agregó ya por el forEach de fields
+                             rowToSend[colKey] = potentialUpdatedRow[colKey];
+                        }
+                    });
+                }
+                delete rowToSend[NEW_ROW_INDICATOR]; // Asegurar que la marca interna no se envíe al backend
+            } else {
+                // Para una actualización de fila existente, solo el campo modificado y las PK
+                rowToSend[column.key] = processedNewValue;
+                tableDefinition.primaryKey.forEach(pkField => {
+                    rowToSend[pkField] = potentialUpdatedRow[pkField];
+                });
+            }
+            
+
             const body = new URLSearchParams();
             body.append('table', tableName);
             body.append('primaryKeyValues', JSON.stringify(primaryKeyValuesForBackend));
-            body.append('newRow', JSON.stringify(changedFields));
+            body.append('newRow', JSON.stringify(rowToSend));
             body.append('oldRow', JSON.stringify(oldRowData));
-            body.append('status', 'update');
+            body.append('status', status);
 
             const response = await fetchApi(`/table_record_save`, {
                 method: 'POST',
                 body: body
             });
 
+            // Se elimina la marca de cambio local de la celda que se acaba de guardar
+            setLocalCellChanges(prev => {
+                const newMap = new Map(prev);
+                const columnKeys = newMap.get(initialRowId);
+                if (columnKeys) {
+                    columnKeys.delete(column.key);
+                    if (columnKeys.size === 0) {
+                        newMap.delete(initialRowId);
+                    } else {
+                        newMap.set(initialRowId, columnKeys);
+                    }
+                }
+                return newMap;
+            });
+
             if (!response.ok) {
                 const errorText = await response.text();
                 showError(`Error ${response.status}: ${errorText}`);
-                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // Usamos el ID original para el error
-                onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
+                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
+                onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error
                 throw new Error(`Error al guardar el registro: ${response.status} - ${errorText}`);
             }
             const rawResponseTextData = await response.text();
@@ -159,54 +272,94 @@ function InputRenderer<R extends Record<string, any>, S>({
 
             if (jsonRespuesta.error) {
                 showError(`Error ${jsonRespuesta.error.code}: ${jsonRespuesta.error.message}`);
-                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // Usamos el ID original para el error
-                onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
+                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
+                onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error del backend
             } else {
                 showSuccess('Registro guardado exitosamente!');
-                // Si la edición fue un éxito y la columna es parte de la PK,
-                // calculamos el nuevo rowId para el feedback
-                const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
-                const rowIdAfterUpdate = isPrimaryKeyColumn 
-                    ? getPrimaryKeyValues(tempUpdatedRow, tableDefinition.primaryKey)
-                    : currentRowIdBeforeUpdate; // Si no es PK, el ID no cambia
                 
-                setCellFeedback({ rowId: rowIdAfterUpdate, columnKey: column.key, type: 'success' });
+                let finalRowIdForFeedback: string;
+                let persistedRowData: R;
+
+                if (jsonRespuesta.row && isNewRow) {
+                    persistedRowData = { ...jsonRespuesta.row };
+                    setTableData(prevData => {
+                        const newData = [...prevData];
+                        const originalRowId = getPrimaryKeyValues(oldRowData, tableDefinition.primaryKey);
+                        const rowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === originalRowId);
+                        if (rowIndex !== -1) {
+                            newData[rowIndex] = persistedRowData;
+                        } else {
+                            // Esto no debería pasar si initialRowId es correcto
+                            console.warn("Fila no encontrada para actualizar después de la inserción. Podría haber un problema de sincronización.");
+                            // Podríamos intentar buscarla por la PK generada en persistedRowData si el ID inicial era temporal
+                            const newPrimaryKeyId = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
+                            const newRowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === newPrimaryKeyId);
+                             if (newRowIndex !== -1) {
+                                newData[newRowIndex] = persistedRowData;
+                             }
+                        }
+                        return newData;
+                    });
+                    finalRowIdForFeedback = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
+                } else {
+                    persistedRowData = potentialUpdatedRow; 
+                    const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
+                    finalRowIdForFeedback = isPrimaryKeyColumn 
+                        ? getPrimaryKeyValues(potentialUpdatedRow, tableDefinition.primaryKey)
+                        : currentRowIdBeforeUpdate;
+                }
+                
+                // MODIFICACIÓN DEL FEEDBACK: Establecer la clave de la columna para feedback de éxito
+                setCellFeedback({ rowId: finalRowIdForFeedback, columnKey: column.key, type: 'success' }); 
             }
 
         } catch (err: any) {
             console.error('Error al guardar el registro:', err);
             showError(`Fallo inesperado al guardar: ${err.message || 'Error desconocido'}`);
-            setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' }); // En caso de error, siempre usamos el ID original
-            onRowChange(oldRowData as R, true); // Revertir la fila en caso de error
+            setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
+            onRowChange(oldRowData as R, true); // Revertir el cambio visual si hay un error en el fetch
         }
-    }, [column, row, onRowChange, tableName, tableDefinition.primaryKey, showSuccess, showError, setCellFeedback, onClose]);
+    }, [
+        column,
+        row,
+        onRowChange,
+        tableName,
+        tableDefinition.primaryKey,
+        tableDefinition.fields,
+        showSuccess,
+        showError,
+        setCellFeedback,
+        onClose,
+        setTableData,
+        setLocalCellChanges,
+        localCellChanges, // Añadido como dependencia
+        initialRowId
+    ]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'Enter') {
-            handleCommit(value, true, true);
+            handleCommit(editingValue, true, true);
             event.preventDefault();
 
             if (onEnterPress) {
                 onEnterPress(rowIdx, column.key);
             }
         } else if (event.key === 'Tab') {
-            handleCommit(value, true, true);
+            handleCommit(editingValue, true, true);
         }
-    }, [handleCommit, value, column.key, rowIdx, onEnterPress]);
+    }, [handleCommit, editingValue, column.key, rowIdx, onEnterPress]);
 
     const handleBlur = useCallback(() => {
-        handleCommit(value, true, false);
-    }, [handleCommit, value]);
+        handleCommit(editingValue, true, false);
+    }, [handleCommit, editingValue]);
 
     const fieldDefinition = tableDefinition.fields.find(f => f.name === column.key);
     const isFieldEditable = fieldDefinition?.editable !== false;
 
-    const backgroundColor = 'transparent';
-
     return (
         <InputBase
-            value={value === null ? '' : value}
-            onChange={(e) => setValue(e.target.value)}
+            value={editingValue === null ? '' : editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
             placeholder={''}
@@ -237,6 +390,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const [filters, setFilters] = useState<Record<string, string>>({});
     const [selectedRows, setSelectedRows] = useState((): ReadonlySet<string> => new Set());
     const [cellFeedback, setCellFeedback] = useState<CellFeedback | null>(null);
+    const [localCellChanges, setLocalCellChanges] = useState<Map<string, Set<string>>>(new Map());
     const theme = useTheme();
 
     const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
@@ -244,7 +398,11 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
     const dataGridRef = useRef<DataGridHandle>(null);
 
+    // Reinicia estados al cambiar el nombre de la tabla
     useEffect(() => {
+        // Establece loading a true aquí para que el spinner aparezca inmediatamente al cambiar de tabla.
+        // Se inicializa en true arriba, pero si cambias de tabla sin recargar, este hook se encarga.
+        setLoading(true); 
         setFilters({});
         setIsFilterRowVisible(false);
         setSelectedRows(new Set());
@@ -252,23 +410,26 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         setTableDefinition(null);
         setTableData([]);
         setCellFeedback(null);
+        setLocalCellChanges(new Map());
         if (feedbackTimerRef.current) {
             clearTimeout(feedbackTimerRef.current);
         }
     }, [tableName]);
 
+    // Lógica de carga de datos y definición de la tabla
     useEffect(() => {
+        // Si tableName es undefined al inicio, salimos.
         if (!tableName) {
             showError("Nombre de tabla no especificado en la URL.");
-            setLoading(false);
+            setLoading(false); // Asegúrate de que loading se desactive
             return;
         }
 
         const fetchDataAndDefinition = async () => {
-            setLoading(true);
-            setError(null);
+            setError(null); // Limpiar errores anteriores
 
             try {
+                // Fetch de la definición de la tabla
                 const bodyStructure = new URLSearchParams({ table: tableName });
                 const responseDefinition = await fetchApi(`/table_structure`, {
                     method: 'POST',
@@ -277,14 +438,16 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
                 if (!responseDefinition.ok) {
                     const errorText = await responseDefinition.text();
-                    showError(`Error al cargar la estructura de la tabla '${tableName}': ${responseDefinition.status} - ${errorText}`);
-                    setError(`Error al cargar la estructura de la tabla: ${responseDefinition.status} - ${errorText}`);
-                    throw new Error(`Error al cargar la estructura de la tabla '${tableName}'`);
+                    const errorMessage = `Error ${responseDefinition.status}: ${errorText} al cargar la estructura de la tabla '${tableName}'`;
+                    showError(errorMessage);
+                    setError(errorMessage);
+                    throw new Error(errorMessage);
                 }
                 const rawResponseTextDefinition = await responseDefinition.text();
                 const definition: TableDefinition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
                 setTableDefinition(definition);
 
+                // Fetch de los datos de la tabla
                 const bodyData = new URLSearchParams({ table: tableName });
                 const responseData = await fetchApi(`/table_data`, {
                     method: 'POST',
@@ -293,34 +456,40 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
                 if (!responseData.ok) {
                     const errorText = await responseData.text();
-                    showError(`Error al cargar datos de '${tableName}': ${responseData.status} - ${errorText}`);
-                    setError(`Error al cargar datos de la tabla: ${responseData.status} - ${errorText}`);
-                    throw new Error(`Error al cargar datos de '${tableName}'`);
+                    const errorMessage = `Error ${responseData.status}: ${errorText} al cargar datos de '${tableName}'`;
+                    showError(errorMessage);
+                    setError(errorMessage);
+                    throw new Error(errorMessage);
                 }
                 const rawResponseTextData = await responseData.text();
                 const data = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
                 setTableData(data);
+
             } catch (err: any) {
                 console.error('Error general al cargar tabla:', err);
-                setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`);
+                // Si el error ya fue establecido por showError, no lo sobrescribimos.
+                if (!error) { 
+                    setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`);
+                }
                 setTableDefinition(null);
                 setTableData([]);
             } finally {
-                setLoading(false);
+                setLoading(false); // Siempre desactiva el estado de carga al finalizar.
             }
         };
 
         fetchDataAndDefinition();
-    }, [tableName, showError]);
+    }, [tableName, showError, error]); // `error` se agrega para asegurar que el `if (!error)` funcione correctamente
 
     useEffect(() => {
         if (cellFeedback) {
             if (feedbackTimerRef.current) {
                 clearTimeout(feedbackTimerRef.current);
             }
+            const timerDuration = cellFeedback.type === 'success' ? 4000 : 3000;
             feedbackTimerRef.current = setTimeout(() => {
                 setCellFeedback(null);
-            }, 3000);
+            }, timerDuration);
         }
         return () => {
             if (feedbackTimerRef.current) {
@@ -329,10 +498,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         };
     }, [cellFeedback]);
 
-
     const primaryKey = useMemo(() => {
         if (!tableDefinition) return ['id'];
-        return tableDefinition.primaryKey || ['id'];
+        return tableDefinition.primaryKey && tableDefinition.primaryKey.length > 0 ? tableDefinition.primaryKey : ['id'];
     }, [tableDefinition]);
 
     const toggleFilterVisibility = useCallback(() => {
@@ -354,14 +522,29 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         tableDefinition.fields.forEach(field => {
             newRow[field.name] = null;
         });
+        newRow[NEW_ROW_INDICATOR] = true;
 
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        newRow[primaryKey[0]] = tempId;
         setTableData(prevData => [newRow, ...prevData]);
         setSelectedRows(new Set());
-        showSuccess('Nueva fila agregada localmente.');
-    }, [tableDefinition, primaryKey, showWarning, showSuccess]);
 
+        const tempRowId = getPrimaryKeyValues(newRow, primaryKey);
+        setLocalCellChanges(prev => {
+            const newMap = new Map(prev);
+            const mandatoryEditableColumns = new Set<string>();
+
+            tableDefinition.fields.forEach(field => {
+                const isMandatory = (field.nullable === false || field.isPk);
+                const isEditable = field.editable !== false;
+
+                if (isMandatory && isEditable) {
+                    mandatoryEditableColumns.add(field.name);
+                }
+            });
+            newMap.set(tempRowId, mandatoryEditableColumns);
+            return newMap;
+        });
+
+    }, [tableDefinition, showWarning, primaryKey]);
 
     const handleDeleteSelectedRows = useCallback(async () => {
         if (selectedRows.size === 0) {
@@ -376,13 +559,34 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
         const rowsToDelete: any[] = [];
         tableData.forEach(row => {
-            if (selectedRows.has(getPrimaryKeyValues(row, primaryKey))) {
+            if (selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && !row[NEW_ROW_INDICATOR]) {
                 rowsToDelete.push(row);
             }
         });
 
+        // Eliminar inmediatamente las filas NUEVAS (no persistidas) del estado local
+        const newTableDataAfterLocalDelete = tableData.filter(row => 
+            !(selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && row[NEW_ROW_INDICATOR])
+        );
+        setTableData(newTableDataAfterLocalDelete);
+
+        // Limpiar los cambios locales de las filas seleccionadas
+        setLocalCellChanges(prev => {
+            const newMap = new Map(prev);
+            selectedRows.forEach(rowId => {
+                newMap.delete(rowId);
+            });
+            return newMap;
+        });
+
+
         if (rowsToDelete.length === 0) {
-            showWarning('No se encontraron filas válidas seleccionadas para eliminar.');
+            if (selectedRows.size > 0 && tableData.some(row => selectedRows.has(getPrimaryKeyValues(row, primaryKey)) && row[NEW_ROW_INDICATOR])) {
+                showInfo('Las filas seleccionadas no guardadas han sido eliminadas localmente.');
+            } else {
+                showWarning('No se encontraron filas guardadas válidas seleccionadas para eliminar.');
+            }
+            setSelectedRows(new Set());
             return;
         }
 
@@ -405,19 +609,23 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
             const message = await response.text();
             console.log('Backend response:', message);
-            showSuccess(`Filas eliminadas exitosamente: ${selectedRows.size}`);
+            showSuccess(`Filas eliminadas exitosamente: ${rowsToDelete.length}`);
 
-            const newTableData = tableData.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
-            setTableData(newTableData);
+            // Filtrar las filas que realmente se eliminaron del backend
+            const finalTableData = newTableDataAfterLocalDelete.filter(row => !selectedRows.has(getPrimaryKeyValues(row, primaryKey)));
+            setTableData(finalTableData);
             setSelectedRows(new Set());
 
         } catch (err: any) {
             console.error('Error al eliminar filas:', err);
             showError(`Fallo inesperado al eliminar: ${err.message || 'Error desconocido'}`);
+            // NOTA: Si falla el borrado en el backend, las filas ya se eliminaron localmente arriba.
+            // Para ser robustos, si la eliminación en el backend falla, deberíamos re-añadir
+            // las filas `rowsToDelete` al `tableData` o volver a cargar los datos.
+            // Por simplicidad, y asumiendo que un error aquí es excepcional, no se revierte automáticamente el estado.
         }
-    }, [selectedRows, tableData, primaryKey, tableName, tableDefinition, showWarning, showError, showSuccess]);
+    }, [selectedRows, tableData, primaryKey, tableName, tableDefinition, showWarning, showError, showSuccess, showInfo, setLocalCellChanges]);
 
-    // filteredRows se define aquí, antes de handleEnterKeyPressInEditor y columns
     const filteredRows = useMemo(() => {
         let rows = tableData;
         if (isFilterRowVisible) {
@@ -434,8 +642,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         return rows;
     }, [tableData, filters, isFilterRowVisible]);
 
-    // handleEnterKeyPressInEditor necesita acceso a `columns` y `filteredRows`
-    // Para que `columns` esté disponible, la pasaremos como argumento
     const handleEnterKeyPressInEditor = useCallback((rowIndex: number, columnKey: string, currentColumns: Column<any>[]) => {
         if (dataGridRef.current && tableDefinition) {
             const currentColumnIndex = currentColumns.findIndex((col: Column<any>) => col.key === columnKey);
@@ -447,38 +653,42 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 let foundNextTarget = false;
                 while (!foundNextTarget) {
                     if (nextColumnIndex >= currentColumns.length) {
-                        nextColumnIndex = 0; // Vuelve a la primera columna
-                        nextRowIndex++; // Salta a la siguiente fila
+                        nextColumnIndex = 0;
+                        nextRowIndex++;
 
                         if (nextRowIndex >= filteredRows.length) {
                             nextRowIndex = 0;
                             nextColumnIndex = 0;
-                            // Si se llega al final de la grilla y se vuelve al principio,
-                            // podemos considerar salir del bucle si ya no hay más celdas.
-                            // Esto evita bucles infinitos en tablas vacías o con una sola fila.
-                            if (filteredRows.length === 0 || (rowIndex === 0 && currentColumnIndex === currentColumns.length -1)) {
-                                foundNextTarget = true; // Salimos del bucle si ya recorrimos todo
-                                break; // Salimos del while
+                            
+                            // Si se llega al final de la cuadrícula, salir del loop o decidir qué hacer
+                            if (filteredRows.length === 0 || (rowIndex === filteredRows.length - 1 && currentColumnIndex === currentColumns.length -1)) {
+                                foundNextTarget = true; // No hay más celdas a las que ir
+                                break;
                             }
                         }
                     }
 
                     const nextColumn = currentColumns[nextColumnIndex];
-                    const isEditableField = tableDefinition.fields.find(f => f.name === nextColumn.key)?.editable !== false;
+                    if (nextColumn) {
+                        const fieldDefinition = tableDefinition.fields.find(f => f.name === nextColumn.key);
+                        const isEditableField = fieldDefinition?.editable !== false;
 
-                    // Si es la columna de acciones o no es editable, avanzamos
-                    if (nextColumn.key !== 'actions' && isEditableField) {
-                        foundNextTarget = true;
+                        if (nextColumn.key !== 'actions' && isEditableField) {
+                            foundNextTarget = true;
+                        } else {
+                            nextColumnIndex++;
+                        }
                     } else {
                         nextColumnIndex++;
                     }
                 }
                 
-                // Mueve el foco a la celda. Esto NO inicia la edición automáticamente.
-                dataGridRef.current.selectCell({ rowIdx: nextRowIndex, idx: nextColumnIndex }, { enableEditor: false, scrollIntoView: true } as SelectCellOptions); 
+                if (foundNextTarget) {
+                    dataGridRef.current.selectCell({ rowIdx: nextRowIndex, idx: nextColumnIndex }, { enableEditor: false, scrollIntoView: true } as SelectCellOptions); 
+                }
             }
         }
-    }, [filteredRows, tableDefinition]); // Dependencias: filteredRows, tableDefinition
+    }, [filteredRows, tableDefinition]);
 
     const columns: Column<any>[] = useMemo(() => {
         if (!tableDefinition) return [];
@@ -523,10 +733,31 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 },
                 renderCell: (props) => {
                     const rowId = getPrimaryKeyValues(props.row, primaryKey);
-                    const isFeedbackCell = cellFeedback && cellFeedback.rowId === rowId && cellFeedback.columnKey === props.column.key;
-                    const backgroundColor = isFeedbackCell
-                        ? (cellFeedback?.type === 'success' ? theme.palette.success.light : theme.palette.error.light)
-                        : 'transparent';
+                    
+                    let backgroundColor = 'transparent';
+
+                    // 1. Feedback de error (prioridad máxima)
+                    if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.type === 'error') {
+                        // Si el error es para una celda específica O si es para toda la fila (no debería ser, pero por si acaso)
+                        if (cellFeedback.columnKey === props.column.key || cellFeedback.columnKey === null) {
+                            backgroundColor = theme.palette.error.light;
+                        }
+                    } 
+                    // 2. Feedback de éxito (solo la celda)
+                    else if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.type === 'success' && cellFeedback.columnKey === props.column.key) {
+                        backgroundColor = theme.palette.success.light;
+                    }
+                    // 3. Cambios locales pendientes (celeste)
+                    else {
+                        // Mejoramos la determinación de si un campo obligatorio en una fila nueva está vacío
+                        const isNewRowLocalCheck = props.row[NEW_ROW_INDICATOR];
+                        const isMandatory = tableDefinition.primaryKey.includes(props.column.key) || (tableDefinition.fields.find(f => f.name === props.column.key)?.nullable === false);
+                        const hasValue = props.row[props.column.key] !== null && props.row[props.column.key] !== undefined && String(props.row[props.column.key]).trim() !== '';
+
+                        if ((isNewRowLocalCheck && isMandatory && !hasValue) || (localCellChanges.has(rowId) && localCellChanges.get(rowId)?.has(props.column.key))) {
+                            backgroundColor = theme.palette.info.light;
+                        }
+                    }
 
                     return (
                         <div
@@ -548,7 +779,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         </div>
                     );
                 },
-                // renderEditCell se definirá en el paso final
             };
         });
 
@@ -570,14 +800,13 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     {isFilterRowVisible ? <SearchOffIcon sx={{ fontSize: 20 }} /> : <SearchIcon sx={{ fontSize: 20 }} />}
                 </IconButton>
             ),
-            renderSummaryCell: () => false && isFilterRowVisible ? (
+            renderSummaryCell: () => isFilterRowVisible ? (
                 null
             ) : null,
         };
 
         const allColumns = [actionColumn, ...defaultColumns];
 
-        // Mapea de nuevo para agregar renderEditCell después de que `handleEnterKeyPressInEditor` esté definido.
         return allColumns.map(col => {
             if (col.editable) {
                 return {
@@ -586,13 +815,17 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         const fieldDefinition = tableDefinition.fields.find(f => f.name === props.column.key);
                         const isFieldEditable = fieldDefinition?.editable !== false;
                         if (!isFieldEditable) return null;
+
                         return (
                             <InputRenderer
                                 {...props}
                                 tableDefinition={tableDefinition}
                                 setCellFeedback={setCellFeedback}
-                                // Aquí pasamos 'columns' para que handleEnterKeyPressInEditor tenga la lista completa
                                 onEnterPress={(rowIndex, columnKey) => handleEnterKeyPressInEditor(rowIndex, columnKey, allColumns)}
+                                setTableData={setTableData}
+                                setLocalCellChanges={setLocalCellChanges}
+                                localCellChanges={localCellChanges} // Pasando como prop
+                                primaryKey={primaryKey}
                             />
                         );
                     }
@@ -601,7 +834,20 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             return col;
         });
 
-    }, [tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility, cellFeedback, primaryKey, theme.palette.success.light, theme.palette.error.light, handleEnterKeyPressInEditor]); // Dependencia de handleEnterKeyPressInEditor
+    }, [
+        tableDefinition,
+        isFilterRowVisible,
+        filters,
+        toggleFilterVisibility,
+        cellFeedback,
+        primaryKey,
+        theme.palette.success.light,
+        theme.palette.error.light,
+        theme.palette.info.light,
+        handleEnterKeyPressInEditor,
+        setTableData,
+        localCellChanges
+    ]);
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
 
@@ -610,16 +856,12 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     }, []);
 
     const handleCellClick = useCallback((args: CellMouseArgs<any, { id: string }>) => {
-        // args.column ya es de tipo CalculatedColumn, que tiene la propiedad 'idx'
         const fieldDefinition = tableDefinition?.fields.find(f => f.name === args.column.key);
         const isEditable = fieldDefinition?.editable !== false;
-    
-        // Puedes acceder a idx a través de args.column.idx
+        
         console.log("Clicked column index:", args.column.idx);
         console.log("Clicked row index:", args.rowIdx);
-    
-        // ... (el resto de tu lógica para handleCellClick) ...
-    
+        console.log("Is editable:", isEditable);
     }, [tableDefinition]);
 
 
@@ -725,5 +967,4 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         </Box>
     );
 };
-
 export default GenericDataGrid;
