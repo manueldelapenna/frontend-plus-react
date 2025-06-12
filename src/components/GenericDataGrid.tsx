@@ -877,8 +877,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 </Typography>
                 
             </Box>
-            <Box sx={{ display: 'flex', px:2, pt:2, pb: 2 }}>
-                {tableDefinition.allow?.insert && (
+            {tableDefinition.allow?.insert && (
+                <Box sx={{ display: 'flex', px:2, pt:2, pb: 2 }}>
+                
                     <Button
                         variant="contained"
                         onClick={handleAddRow}
@@ -886,8 +887,13 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     >
                         Nuevo Registro
                     </Button>
-                )}
+                </Box>
+            )}
+            <Box sx={{px:2, pt:2, pb: 2 }}>
+                <Box>{`${filteredRows.length} registros filtrados`}</Box>
+                <Box>{`${tableData.length} registros total`}</Box>
             </Box>
+            
             <Box
                 sx={{
                     flexGrow: showNoRowsMessage ? 0 : 1,
