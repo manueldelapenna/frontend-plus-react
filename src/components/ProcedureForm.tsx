@@ -336,9 +336,10 @@ const ProcedureForm: React.FC = () => {
   return (
     <Box sx={{ 
       p: 2, 
-      width: '100%', 
+      ml: 1,
+      mt: 2,
+      mr: 1,
       boxSizing: 'border-box', 
-      mt: 0, // Pegado al toolbar para máximo ahorro de espacio
       bgcolor: 'background.paper', 
       borderRadius: 2, 
       boxShadow: 3,
