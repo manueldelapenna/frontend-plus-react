@@ -411,7 +411,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         }
         const fetchDataAndDefinition = async () => {
             try {
-                const definition = await callApi('table_structure',{table:tableName});
+                const definition: TableDefinition = await callApi('table_structure',{table:tableName});
                 setTableDefinition(definition);
                 const data = await callApi('table_data',{table:tableName});
                 setTableData(data);
@@ -544,11 +544,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
             // Si es una fila persistida, intenta eliminarla del backend
             try {
-                const body = new URLSearchParams();
-                body.append('table', tableName);
                 const primaryKeyValues = tableDefinition.primaryKey.map((key)=> rowToDelete[key]);
-                body.append('primaryKeyValues', JSON.stringify(primaryKeyValues));
-
                 await callApi('table_record_delete', {
                     table:tableName,
                     primaryKeyValues:JSON.stringify(primaryKeyValues)
