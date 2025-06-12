@@ -7,30 +7,41 @@ export interface MenuUiState {
 }
 
 const initialState: MenuUiState = {
-    isDrawerOpen: false, // El valor inicial que quieres para el Drawer
-    subMenuOpenStates: {}, // Inicialmente, ningún submenú está abierto
+    isDrawerOpen: false,
+    subMenuOpenStates: {},
 };
 
 const menuUiSlice = createSlice({
     name: 'menuUi',
     initialState,
     reducers: {
-        // Reducer para cambiar el estado del Drawer principal
         setDrawerOpen: (state, action: PayloadAction<boolean>) => {
             state.isDrawerOpen = action.payload;
         },
         toggleDrawer: (state) => {
             state.isDrawerOpen = !state.isDrawerOpen;
         },
-        // Reducer para cambiar el estado de apertura/cierre de un submenú específico
         setSubMenuOpen: (state, action: PayloadAction<{ menuName: string; isOpen: boolean }>) => {
             state.subMenuOpenStates[action.payload.menuName] = action.payload.isOpen;
         },
         toggleSubMenu: (state, action: PayloadAction<string>) => {
-            // Si el submenú ya existe, invierte su estado; si no, ábrelo por defecto
             state.subMenuOpenStates[action.payload] = !state.subMenuOpenStates[action.payload];
         },
-        // Opcional: un reducer para resetear todos los estados del menú si es necesario (ej. al cerrar sesión)
+        // --- NUEVO REDUCER: Establecer el estado de todos los submenús ---
+        setAllSubMenusOpen: (state, action: PayloadAction<boolean>) => {
+            // Itera sobre todas las claves existentes y las establece al valor dado
+            for (const menuName in state.subMenuOpenStates) {
+                if (Object.prototype.hasOwnProperty.call(state.subMenuOpenStates, menuName)) {
+                    state.subMenuOpenStates[menuName] = action.payload;
+                }
+            }
+            // Importante: Si hay nuevos submenús que no están en subMenuOpenStates,
+            // no se verán afectados por este bucle.
+            // Una estrategia más robusta para casos donde el menú puede cambiar dinámicamente
+            // sería obtener todos los nombres de menú recursivamente desde clientContext.menu
+            // y actualizar sus estados. Por ahora, asumimos que los que ya están en el estado
+            // son los que queremos controlar.
+        },
         resetMenuUiState: (state) => {
             Object.assign(state, initialState);
         },
@@ -42,6 +53,7 @@ export const {
     toggleDrawer,
     setSubMenuOpen,
     toggleSubMenu,
+    setAllSubMenusOpen, // ¡Exportamos la nueva acción!
     resetMenuUiState,
 } = menuUiSlice.actions;
 
