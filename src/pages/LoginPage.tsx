@@ -66,8 +66,9 @@ const LoginPage = () => {
             // Si el backend redirige a /menu, significa que el login fue exitoso.
             // Si la respuesta no es OK, o si la URL no termina en /menu, asumimos un fallo.
             if (!loginResponse.ok || !loginResponse.url.endsWith('/menu')) {
-                const errorText = await loginResponse.text();
-                throw new Error(errorText || 'Credenciales incorrectas o error al iniciar sesión');
+                //const errorText = await loginResponse.text();
+                const errorText = 'Credenciales incorrectas o error al iniciar sesión';
+                throw new Error(errorText);
             }
 
             // Si el login fue exitoso, actualiza el estado de la sesión y carga el contexto del cliente
@@ -169,8 +170,7 @@ const LoginPage = () => {
                     </Button>
                 </form>
                 {loginError && (
-                    <Alert severity="error" sx={{ mt: 2 }}> {/* Ya no necesitas alertProps */}
-                        <AlertCircle fontSize="small" />
+                    <Alert severity="error" sx={{ mt: 2, maxHeight:'200px'}}> {/* Ya no necesitas alertProps */}
                         <AlertTitle>Error</AlertTitle>
                         {loginError}
                     </Alert>
