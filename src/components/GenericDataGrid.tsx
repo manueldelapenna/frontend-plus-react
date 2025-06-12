@@ -889,9 +889,12 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                     </Button>
                 </Box>
             )}
-            <Box sx={{px:2, pt:2, pb: 2 }}>
-                <Box>{`${filteredRows.length} registros filtrados`}</Box>
-                <Box>{`${tableData.length} registros total`}</Box>
+            <Box sx={{px:2, pt:2, pb: 1, fontSize: '0.9rem'}}>
+                {filteredRows.length == tableData.length?
+                    <Box>mostrando {`${tableData.length} registros`}</Box>
+                :<>
+                    <Box>mostrando {`${filteredRows.length} registros filtrados`}</Box>
+                </>}
             </Box>
             
             <Box
