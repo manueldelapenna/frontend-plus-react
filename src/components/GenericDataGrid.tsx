@@ -675,6 +675,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                                 padding: '4px',
                                 boxSizing: 'border-box',
                                 height: '100%',
+                                textDecoration: field.isPk?'underline':undefined,
                             }}
                         >
                             <span style={{ fontWeight: 'bold' }}>{column.name}</span>
