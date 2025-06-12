@@ -4,7 +4,7 @@ import 'react-data-grid/lib/styles.css';
 import { TableDefinition, FieldDefinition } from "backend-plus";
 
 import { useParams } from 'react-router-dom';
-import { fetchApi } from '../utils/fetchApi';
+import { useApiCall } from '../hooks/useApiCall';
 import {
     CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton,
     Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
@@ -117,7 +117,7 @@ function InputRenderer<R extends Record<string, any>, S>({
     const { showSuccess, showError } = useSnackbar();
 
     const initialRowId = useMemo(() => getPrimaryKeyValues(row, primaryKey), [row, primaryKey]);
-
+    const { callApi, loading, error } = useApiCall();
     const handleCommit = useCallback(async (currentValue: any, closeEditor: boolean, focusNextCell: boolean) => {
         const processedNewValue = typeof currentValue === 'string'
             ? (currentValue.trim() === '' ? null : currentValue.trim())
@@ -195,46 +195,39 @@ function InputRenderer<R extends Record<string, any>, S>({
                 });
             }
         }
-
-        try {
-            const status = isNewRow ? 'new' : 'update';
-
-            let rowToSend: Record<string, any> = {};
-
-            if (isNewRow) {
-                tableDefinition.fields.forEach(fieldDef => {
-                    const fieldValue = potentialUpdatedRow[fieldDef.name];
-                    if (fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== '') {
-                        rowToSend[fieldDef.name] = fieldValue;
-                    } else if (tableDefinition.primaryKey.includes(fieldDef.name) && (fieldValue === null || fieldValue === undefined || String(fieldValue).trim() === '')) {
-                        rowToSend[fieldDef.name] = fieldValue;
+      
+        const status = isNewRow ? 'new' : 'update';
+        let rowToSend: Record<string, any> = {};
+        if (isNewRow) {
+            tableDefinition.fields.forEach(fieldDef => {
+                const fieldValue = potentialUpdatedRow[fieldDef.name];
+                if (fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== '') {
+                    rowToSend[fieldDef.name] = fieldValue;
+                } else if (tableDefinition.primaryKey.includes(fieldDef.name) && (fieldValue === null || fieldValue === undefined || String(fieldValue).trim() === '')) {
+                    rowToSend[fieldDef.name] = fieldValue;
+                }
+            });
+            if (localCellChanges.has(initialRowId)) {
+                localCellChanges.get(initialRowId)?.forEach((colKey: string) => {
+                    if (!rowToSend.hasOwnProperty(colKey)) {
+                        rowToSend[colKey] = potentialUpdatedRow[colKey];
                     }
                 });
-                if (localCellChanges.has(initialRowId)) {
-                    localCellChanges.get(initialRowId)?.forEach((colKey: string) => {
-                        if (!rowToSend.hasOwnProperty(colKey)) {
-                            rowToSend[colKey] = potentialUpdatedRow[colKey];
-                        }
-                    });
-                }
-                delete rowToSend[NEW_ROW_INDICATOR];
-            } else {
-                rowToSend[column.key] = processedNewValue;
-                tableDefinition.primaryKey.forEach(pkField => {
-                    rowToSend[pkField] = potentialUpdatedRow[pkField];
-                });
             }
-
-            const body = new URLSearchParams();
-            body.append('table', tableName);
-            body.append('primaryKeyValues', JSON.stringify(primaryKeyValuesForBackend));
-            body.append('newRow', JSON.stringify(rowToSend));
-            body.append('oldRow', JSON.stringify(oldRowData));
-            body.append('status', status);
-
-            const response = await fetchApi(`/table_record_save`, {
-                method: 'POST',
-                body: body
+            delete rowToSend[NEW_ROW_INDICATOR];
+        } else {
+            rowToSend[column.key] = processedNewValue;
+            tableDefinition.primaryKey.forEach(pkField => {
+                rowToSend[pkField] = potentialUpdatedRow[pkField];
+            });
+        }
+        try {
+            const response = await callApi('table_record_save',{
+                table:tableName,
+                primaryKeyValues: primaryKeyValuesForBackend,
+                newRow: rowToSend,
+                oldRow: oldRowData,
+                status
             });
 
             setLocalCellChanges(prev => {
@@ -250,60 +243,39 @@ function InputRenderer<R extends Record<string, any>, S>({
                 }
                 return newMap;
             });
+            showSuccess('Registro guardado exitosamente!');
+            let finalRowIdForFeedback: string;
+            let persistedRowData: R;
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                showError(`Error ${response.status}: ${errorText}`);
-                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true);
-                throw new Error(`Error al guardar el registro: ${response.status} - ${errorText}`);
-            }
-            const rawResponseTextData = await response.text();
-            const jsonRespuesta = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
-
-            if (jsonRespuesta.error) {
-                showError(`Error ${jsonRespuesta.error.code}: ${jsonRespuesta.error.message}`);
-                setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
-                onRowChange(oldRowData as R, true);
-            } else {
-                showSuccess('Registro guardado exitosamente!');
-
-                let finalRowIdForFeedback: string;
-                let persistedRowData: R;
-
-                if (jsonRespuesta.row && isNewRow) {
-                    persistedRowData = { ...jsonRespuesta.row };
-                    setTableData(prevData => {
-                        const newData = [...prevData];
-                        const originalRowId = getPrimaryKeyValues(oldRowData, tableDefinition.primaryKey);
-                        const rowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === originalRowId);
-                        if (rowIndex !== -1) {
-                            newData[rowIndex] = persistedRowData;
-                        } else {
-                            console.warn("Fila no encontrada para actualizar después de la inserción. Podría haber un problema de sincronización.");
-                            const newPrimaryKeyId = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
-                            const newRowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === newPrimaryKeyId);
-                            if (newRowIndex !== -1) {
-                                newData[newRowIndex] = persistedRowData;
-                            }
+            if (response.row && isNewRow) {
+                persistedRowData = { ...response.row };
+                setTableData(prevData => {
+                    const newData = [...prevData];
+                    const originalRowId = getPrimaryKeyValues(oldRowData, tableDefinition.primaryKey);
+                    const rowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === originalRowId);
+                    if (rowIndex !== -1) {
+                        newData[rowIndex] = persistedRowData;
+                    } else {
+                        console.warn("Fila no encontrada para actualizar después de la inserción. Podría haber un problema de sincronización.");
+                        const newPrimaryKeyId = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
+                        const newRowIndex = newData.findIndex(r => getPrimaryKeyValues(r, tableDefinition.primaryKey) === newPrimaryKeyId);
+                        if (newRowIndex !== -1) {
+                            newData[newRowIndex] = persistedRowData;
                         }
-                        return newData;
-                    });
-                    finalRowIdForFeedback = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
-                } else {
-                    persistedRowData = potentialUpdatedRow;
-                    const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
-                    finalRowIdForFeedback = isPrimaryKeyColumn
-                        ? getPrimaryKeyValues(potentialUpdatedRow, tableDefinition.primaryKey)
-                        : currentRowIdBeforeUpdate;
-                }
-
-                setCellFeedback({ rowId: finalRowIdForFeedback, columnKey: column.key, type: 'success' });
+                    }
+                    return newData;
+                });
+                finalRowIdForFeedback = getPrimaryKeyValues(persistedRowData, tableDefinition.primaryKey);
+            } else {
+                persistedRowData = potentialUpdatedRow;
+                const isPrimaryKeyColumn = tableDefinition.primaryKey.includes(column.key);
+                finalRowIdForFeedback = isPrimaryKeyColumn
+                    ? getPrimaryKeyValues(potentialUpdatedRow, tableDefinition.primaryKey)
+                    : currentRowIdBeforeUpdate;
             }
-
+            setCellFeedback({ rowId: finalRowIdForFeedback, columnKey: column.key, type: 'success' });
         } catch (err: any) {
             console.error('Error al guardar el registro:', err);
-            showError(`Fallo inesperado al guardar: ${err.message || 'Error desconocido'}`);
             setCellFeedback({ rowId: currentRowIdBeforeUpdate, columnKey: column.key, type: 'error' });
             onRowChange(oldRowData as R, true);
         }
@@ -395,9 +367,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
     const [tableData, setTableData] = useState<any[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-
     const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
     const [filters, setFilters] = useState<Record<string, string>>({});
     const [selectedRows, setSelectedRows] = useState((): ReadonlySet<string> => new Set());
@@ -415,14 +384,13 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
     const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
     const dataGridRef = useRef<DataGridHandle>(null);
+    const { callApi, loading, error } = useApiCall();
 
     // Reinicia estados al cambiar el nombre de la tabla
     useEffect(() => {
-        setLoading(true);
         setFilters({});
         setIsFilterRowVisible(false);
         setSelectedRows(new Set());
-        setError(null);
         setTableDefinition(null);
         setTableData([]);
         setCellFeedback(null);
@@ -439,60 +407,19 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     useEffect(() => {
         if (!tableName) {
             showError("Nombre de tabla no especificado en la URL.");
-            setLoading(false);
             return;
         }
-
         const fetchDataAndDefinition = async () => {
-            setError(null);
-
             try {
-                const bodyStructure = new URLSearchParams({ table: tableName });
-                const responseDefinition = await fetchApi(`/table_structure`, {
-                    method: 'POST',
-                    body: bodyStructure
-                });
-
-                if (!responseDefinition.ok) {
-                    const errorText = await responseDefinition.text();
-                    const errorMessage = `Error ${responseDefinition.status}: ${errorText} al cargar la estructura de la tabla '${tableName}'`;
-                    showError(errorMessage);
-                    setError(errorMessage);
-                    throw new Error(errorMessage);
-                }
-                const rawResponseTextDefinition = await responseDefinition.text();
-                const definition: TableDefinition = JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
+                const definition = await callApi('table_structure',{table:tableName});
                 setTableDefinition(definition);
-
-                const bodyData = new URLSearchParams({ table: tableName });
-                const responseData = await fetchApi(`/table_data`, {
-                    method: 'POST',
-                    body: bodyData
-                });
-
-                if (!responseData.ok) {
-                    const errorText = await responseData.text();
-                    const errorMessage = `Error ${responseData.status}: ${errorText} al cargar datos de '${tableName}'`;
-                    showError(errorMessage);
-                    setError(errorMessage);
-                    throw new Error(errorMessage);
-                }
-                const rawResponseTextData = await responseData.text();
-                const data = JSON.parse(rawResponseTextData.replace(/^--\n/, ''));
+                const data = await callApi('table_data',{table:tableName});
                 setTableData(data);
-
             } catch (err: any) {
-                console.error('Error general al cargar tabla:', err);
-                if (!error) {
-                    setError(`Error al cargar la tabla: ${err.message || 'Error desconocido'}`);
-                }
                 setTableDefinition(null);
                 setTableData([]);
-            } finally {
-                setLoading(false);
-            }
+            } finally {}
         };
-
         fetchDataAndDefinition();
     }, [tableName, showError, error]);
 
@@ -589,7 +516,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         // Permite un pequeño retraso para que el navegador aplique los estilos iniciales
         // y luego active la transición a `max-height: 0` y `opacity: 0`.
         // La duración de este setTimeout (ej. 10ms) es crítica para que la transición se "enganche".
-        setTimeout(async () => { // Hacemos esta función interna async para el fetchApi
+        setTimeout(async () => {
             // Si es una fila nueva, elimínala solo localmente
             if (rowToDelete[NEW_ROW_INDICATOR]) {
                 setTimeout(() => { // Este setTimeout coincide con la duración de la transición CSS
@@ -622,16 +549,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 const primaryKeyValues = tableDefinition.primaryKey.map((key)=> rowToDelete[key]);
                 body.append('primaryKeyValues', JSON.stringify(primaryKeyValues));
 
-                const response = await fetchApi(`/table_record_delete`, {
-                    method: 'POST',
-                    body: body
+                await callApi('table_record_delete', {
+                    table:tableName,
+                    primaryKeyValues:JSON.stringify(primaryKeyValues)
                 });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    showError(`Error al eliminar la fila '${rowId}': ${response.status} - ${errorText}`);
-                    throw new Error(`Error al eliminar la fila: ${errorText}`);
-                }
 
                 console.log(`Fila con ID ${rowId} eliminada exitosamente del backend.`);
                 // Permitir un breve momento para la transición visual
@@ -658,7 +579,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
             } catch (err: any) {
                 console.error(`Error al eliminar la fila '${rowId}':`, err);
-                showError(`Fallo inesperado al eliminar la fila '${rowId}': ${err.message || 'Error desconocido'}`);
                 setExitingRowIds(prev => { // Quitar de las filas en transición en caso de error
                     const newSet = new Set(prev);
                     newSet.delete(rowId);
@@ -940,7 +860,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     if (error) {
         return (
             <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-                <Alert severity="error">{error}</Alert>
+                <Alert severity="error">{error.message}</Alert>
             </Box>
         );
     }

@@ -1,3 +1,5 @@
+import {CoreFunctionParameters} from "backend-plus"
+
 interface FetchApiOptions extends RequestInit {
   // Puedes extender RequestInit para añadir opciones específicas si es necesario
   // Por ejemplo, si siempre envías JSON, podrías tener:
@@ -30,4 +32,47 @@ const {REACT_APP_BACKEND_URL} = process.env;
         delete config.body;
     }
     return await fetch(REACT_APP_BACKEND_URL+endPoint, config);
+}
+export const executeBackendProcedure = async<T=any>(procedureName:string, params:Record<string, any>):Promise<T | null> => {
+    function stringifyObjectsAndArraysInParams(params: Record<string, any>): Record<string, any> {
+        const newParams: Record<string, any> = {};
+    
+        for (const key in params) {
+            // Asegúrate de que la propiedad pertenece al objeto y no a su prototipo
+            if (Object.prototype.hasOwnProperty.call(params, key)) {
+                const value = params[key];
+    
+                // Condición: Si el valor es un objeto Y NO es null
+                // Tanto los objetos planos como los arrays pasarán esta condición.
+                if (typeof value === 'object' && value !== null) {
+                    try {
+                        newParams[key] = JSON.stringify(value);
+                    } catch (e) {
+                        // Manejo de errores si el objeto/array no es serializable (ej. referencias circulares)
+                        console.warn(`Warning: Could not stringify value for key '${key}'. Keeping original value. Error:`, e);
+                        newParams[key] = value; // Mantén el valor original si no se puede stringificar
+                    }
+                } else {
+                    // Para todos los demás tipos (primitivos, null, undefined), mantenemos el valor original
+                    newParams[key] = value;
+                }
+            }
+        }
+        return newParams;
+    }
+
+    const body = new URLSearchParams(stringifyObjectsAndArraysInParams(params));
+    const response = await fetchApi(`/${procedureName}`, {body, method:'POST'})
+    if (response.ok) {
+        const rawResponseTextDefinition = await response.text();
+        const result =  JSON.parse(rawResponseTextDefinition.replace(/^--\n/, ''));
+        if(result.error){
+            throw new Error(result.error.message)
+        }else{
+            return result;
+        }
+    } else {
+        const errorTextDefinition = await response.text();
+        throw new Error(`Error al ejecutar procedure '${procedureName}': ${response.status} - ${errorTextDefinition}`);
+    }    
 }
