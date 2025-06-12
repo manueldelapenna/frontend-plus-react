@@ -547,7 +547,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 const primaryKeyValues = tableDefinition.primaryKey.map((key)=> rowToDelete[key]);
                 await callApi('table_record_delete', {
                     table:tableName,
-                    primaryKeyValues:JSON.stringify(primaryKeyValues)
+                    primaryKeyValues:primaryKeyValues
                 });
 
                 console.log(`Fila con ID ${rowId} eliminada exitosamente del backend.`);
@@ -875,17 +875,18 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 <Typography variant="h4" gutterBottom sx={{ m: 0 }}>
                     {cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                
+            </Box>
+            <Box sx={{ display: 'flex', px:2, pt:2, pb: 2 }}>
                 {tableDefinition.allow?.insert && (
-                        <Button
-                            variant="contained"
-                            onClick={handleAddRow}
-                            startIcon={<AddIcon />}
-                        >
-                            Agregar Registro
-                        </Button>
-                    )}
-                </Box>
+                    <Button
+                        variant="contained"
+                        onClick={handleAddRow}
+                        startIcon={<AddIcon />}
+                    >
+                        Nuevo Registro
+                    </Button>
+                )}
             </Box>
             <Box
                 sx={{
