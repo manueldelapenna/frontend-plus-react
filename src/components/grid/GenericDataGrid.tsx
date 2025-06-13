@@ -565,7 +565,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                 
             </Box>
             {tableDefinition.allow?.insert && (
-                <Box sx={{ display: 'flex', px:2, pt:2, pb: 2 }}>
+                <Box sx={{ display: 'flex', px:2 }}>
                 
                     <Button
                         variant="contained"
