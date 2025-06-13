@@ -5,8 +5,7 @@ import 'react-data-grid/lib/styles.css';
 import { useParams } from 'react-router-dom';
 import { useApiCall } from '../../hooks/useApiCall';
 import {
-    CircularProgress, Typography, Box, Alert, useTheme, InputBase, Button, IconButton,
-    Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
+    CircularProgress, Typography, Box, Alert, useTheme, Button, IconButton
 } from '@mui/material';
 import {cambiarGuionesBajosPorEspacios } from '../../utils/functions';
 
@@ -19,9 +18,10 @@ import { useSnackbar } from '../../contexts/SnackbarContext';
 
 import PkHeaderRenderer from './PkHeaderRenderer';
 import PkCellRenderer from './PkCellRenderer';
-import { CellFeedback, ConfirmDialogProps, FieldDefinition, GenericDataGridProps, TableDefinition } from '../../types';
+import { CellFeedback, FieldDefinition, GenericDataGridProps, TableDefinition } from '../../types';
 import FilterInputRenderer from './FilterInputRender';
 import InputRenderer from './InputRendered';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 /**
  * Genera una cadena única para identificar una fila basándose en sus valores de clave primaria.
@@ -42,32 +42,6 @@ export const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string
 };
 
 export const NEW_ROW_INDICATOR = '.$new'; // Indicador para nuevas filas que aún no están en la base de datos
-
-const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ open, onClose, title, message }) => {
-    return (
-        <Dialog
-            open={open}
-            onClose={() => onClose(false)}
-            aria-labelledby="confirm-dialog-title"
-            aria-describedby="confirm-dialog-description"
-        >
-            <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
-            <DialogContent>
-                <DialogContentText id="confirm-dialog-description">
-                    {message}
-                </DialogContentText>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={() => onClose(false)} color="primary">
-                    Cancelar
-                </Button>
-                <Button onClick={() => onClose(true)} color="error" autoFocus>
-                    Confirmar
-                </Button>
-            </DialogActions>
-        </Dialog>
-    );
-};
 
 const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
     const { tableName } = useParams<{ tableName?: string }>();
