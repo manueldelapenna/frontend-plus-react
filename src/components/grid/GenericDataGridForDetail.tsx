@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataGrid, Column } from 'react-data-grid';
 import { TableDefinition, FieldDefinition, DetailTable } from "backend-plus";
-import { fetchApi } from '../utils/fetchApi'; 
+import { fetchApi } from '../../utils/fetchApi'; 
 import { CircularProgress, Typography, Box, Alert } from '@mui/material';
-import { quitarGuionesBajos } from '../utils/functions';
-import { GenericDataGridForDetailProps } from '../types';
+import { quitarGuionesBajos } from '../../utils/functions';
+import { GenericDataGridForDetailProps } from '../../types';
 
 // Función de utilidad para obtener los valores de la clave primaria
 // Asumiendo que esta función existe y es correcta para tu lógica de negocio
