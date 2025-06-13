@@ -2,12 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DataGrid, Column, DataGridHandle, SelectCellOptions, CellMouseArgs, RenderCellProps, RenderHeaderCellProps } from 'react-data-grid'; 
 import 'react-data-grid/lib/styles.css';
 
-import { useParams } from 'react-router-dom';
 import { useApiCall } from '../../hooks/useApiCall';
 import {
     CircularProgress, Typography, Box, Alert, useTheme, Button, IconButton
 } from '@mui/material';
-import {cambiarGuionesBajosPorEspacios } from '../../utils/functions';
+import { cambiarGuionesBajosPorEspacios } from '../../utils/functions';
 
 import SearchIcon from '@mui/icons-material/Search';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
@@ -18,10 +17,31 @@ import { useSnackbar } from '../../contexts/SnackbarContext';
 
 import PkHeaderRenderer from './PkHeaderRenderer';
 import PkCellRenderer from './PkCellRenderer';
-import { CellFeedback, FieldDefinition, GenericDataGridProps, TableDefinition } from '../../types';
-import FilterInputRenderer from './FilterInputRender';
-import InputRenderer from './InputRendered';
-import { ConfirmDialog } from '../ConfirmDialog';
+// Importa todos los tipos de tu archivo centralizado
+import { 
+    CellFeedback, 
+    FieldDefinition, 
+    TableDefinition, 
+    FilterRendererProps, 
+    InputRendererProps, 
+    ConfirmDialogProps, // Si ConfirmDialog es un componente separado
+    CustomHeaderCellProps, // Si PkHeaderRenderer usa esta prop
+    CustomCellProps // Si PkCellRenderer usa esta prop
+} from '../../types'; // Ajusta la ruta a tu archivo de tipos centralizado
+
+// Si ConfirmDialog es un componente separado que también moviste:
+import { ConfirmDialog } from '../ConfirmDialog'; // Ajusta la ruta si moviste ConfirmDialog a components/grid
+
+// Si FilterInputRenderer y InputRenderer son componentes separados
+import FilterInputRenderer from './FilterInputRender'; // Ajusta la ruta si moviste FilterInputRenderer
+import InputRenderer from './InputRendered'; // Ajusta la ruta si moviste InputRenderer
+
+/**
+ * Define las props para el componente GenericDataGrid
+ */
+interface GenericDataGridProps {
+    tableName: string; // ¡Ahora tableName es una prop!
+}
 
 /**
  * Genera una cadena única para identificar una fila basándose en sus valores de clave primaria.
@@ -43,8 +63,9 @@ export const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string
 
 export const NEW_ROW_INDICATOR = '.$new'; // Indicador para nuevas filas que aún no están en la base de datos
 
-const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
-    const { tableName } = useParams<{ tableName?: string }>();
+const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // Recibe tableName de las props
+    // Ya no necesitas obtener tableName de useParams aquí
+    // const { tableName } = useParams<{ tableName?: string }>();
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
     const [tableData, setTableData] = useState<any[]>([]);
     const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
@@ -81,14 +102,15 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
         if (feedbackTimerRef.current) {
             clearTimeout(feedbackTimerRef.current);
         }
-    }, [tableName]);
+    }, [tableName]); // El efecto se dispara cuando tableName cambia
 
     // Lógica de carga de datos y definición de la tabla
     useEffect(() => {
-        if (!tableName) {
-            showError("Nombre de tabla no especificado en la URL.");
-            return;
-        }
+        // Ya no necesitas esta validación aquí, el GenericDataGridPage se encarga de ella.
+        // if (!tableName) {
+        //     showError("Nombre de tabla no especificado en la URL.");
+        //     return;
+        // }
         const fetchDataAndDefinition = async () => {
             try {
                 const definition: TableDefinition = await callApi('table_structure',{table:tableName});
@@ -98,10 +120,11 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
             } catch (err: any) {
                 setTableDefinition(null);
                 setTableData([]);
+                showError(`Error al cargar datos para la tabla '${tableName}': ${err.message || 'Error desconocido'}`); // Mostrar error
             } finally {}
         };
         fetchDataAndDefinition();
-    }, [tableName, showError, error]);
+    }, [tableName, showError]); // `error` de useApiCall no es una dependencia aquí, ya lo manejamos con `showError`
 
     useEffect(() => {
         if (cellFeedback) {
@@ -255,6 +278,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
 
             } catch (err: any) {
                 console.error(`Error al eliminar la fila '${rowId}':`, err);
+                showError(`Error al eliminar la fila '${rowId}': ${err.message || 'Error desconocido'}`); // Muestra el error
                 setExitingRowIds(prev => { // Quitar de las filas en transición en caso de error
                     const newSet = new Set(prev);
                     newSet.delete(rowId);
@@ -343,6 +367,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                 flexGrow: 1,
                 minWidth: 60,
                 isPK: field.isPk,
+                // Usando CustomHeaderCellProps aquí para el tipado
                 renderHeaderCell: (props: RenderHeaderCellProps<any, any>) => <PkHeaderRenderer {...props} />, 
                 renderSummaryCell: ({ column }) => {
                     return isFilterRowVisible ? (
@@ -353,7 +378,8 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = () => {
                         />
                     ) : null;
                 },
-                renderCell: (props: RenderCellProps<any, any>) => { // Asegúrate de tipar props
+                // Usando CustomCellProps aquí para el tipado
+                renderCell: (props: RenderCellProps<any, any>) => { 
                     const rowId = getPrimaryKeyValues(props.row, primaryKey);
                     
                     // Lógica para resaltar celdas con feedback o cambios locales

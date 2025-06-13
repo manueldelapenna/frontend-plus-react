@@ -5,7 +5,6 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-route
 import MainLayout from './components/MainLayout'; // Asegúrate de que MainLayout tiene <Outlet />
 import SessionExpiredMessage from './components/SessionExpiredMessage';
 import { AppProvider } from './contexts/AppContext'; 
-import GenericDataGrid from './components/grid/GenericDataGrid';
 import HomePage from './pages/HomePage';
 import LogoutPage from './pages/LogoutPage';
 import LoginPage from './pages/LoginPage';
@@ -23,6 +22,7 @@ import { useAppDispatch } from './store';
 import { setCurrentPath } from './store/routerSlice';
 
 import { SnackbarProvider } from './contexts/SnackbarContext';
+import GenericDataGridPage from './pages/GenericDataGridPage';
 
 
 // LocationTracker (sin cambios)
@@ -62,7 +62,7 @@ function App() {
                 {/* Estas son las rutas específicas que aparecerán dentro de MainLayout y están protegidas */}
                 <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
-                <Route path="/table/:tableName" element={<GenericDataGrid />} />
+                <Route path="/table/:tableName" element={<GenericDataGridPage />} />
                 <Route path="/procedures/:procedureName" element={<ProcedureForm />} />
                 
                 {/* Ruta 404 para URLs dentro del área protegida que no coinciden */}
