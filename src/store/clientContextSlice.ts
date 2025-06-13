@@ -3,19 +3,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { MenuInfoBase, ProcedureDef, AppConfigClientSetup } from "backend-plus";
 import { Details } from 'express-useragent'; // Asumiendo que 'Details' viene de aquí
 import { fetchApi } from '../utils/fetchApi'; // Tu utilidad fetchApi
-
-// Define la interfaz para el estado de clientContext
-// Hemos añadido 'status' y 'error' para gestionar el estado de la carga
-export interface ClientContextState {
-    menu: MenuInfoBase[];
-    procedure: { [key: string]: ProcedureDef };
-    procedures: ProcedureDef[];
-    config: AppConfigClientSetup;
-    useragent: Details;
-    username: string;
-    status: 'idle' | 'loading' | 'succeeded' | 'failed'; // Estado de la petición
-    error: string | null; // Mensaje de error
-}
+import { ClientContextState } from '../types';
 
 // Estado inicial para el slice de clientContext
 const initialState: ClientContextState = {

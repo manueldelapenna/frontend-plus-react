@@ -1,10 +1,6 @@
 // src/store/menuUiSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-
-export interface MenuUiState {
-    isDrawerOpen: boolean;
-    subMenuOpenStates: { [key: string]: boolean }; // Para persistir el estado de los submenús por su 'name'
-}
+import { MenuUiState } from '../types';
 
 const initialState: MenuUiState = {
     isDrawerOpen: false,

@@ -2,29 +2,12 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import MuiAlert, { AlertProps } from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
+import { SnackbarContextType, SnackbarProviderProps, SnackbarState } from '../types';
 
 // Definir el tipo de las props para el Alert en el Snackbar
 const SnackbarAlert = React.forwardRef<HTMLDivElement, AlertProps>(function SnackbarAlert(props, ref) {
     return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
 });
-
-// Definir el tipo del estado del Snackbar
-interface SnackbarState {
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info' | 'warning';
-    duration?: number | null; // Añadimos 'duration' opcional (en ms)
-}
-
-// Definir el tipo del contexto
-interface SnackbarContextType {
-    // showSnackbar ahora acepta una duración opcional
-    showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning', duration?: number | null) => void;
-    showSuccess: (message: string, duration?: number | null) => void;
-    showError: (message: string, duration?: number | null) => void;
-    showWarning: (message: string, duration?: number | null) => void;
-    showInfo: (message: string, duration?: number | null) => void;
-}
 
 // Crear el contexto
 const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined);
@@ -32,11 +15,6 @@ const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined
 // Valores por defecto para la duración (en milisegundos)
 const DEFAULT_SUCCESS_DURATION = 3000; 
 const DEFAULT_ERROR_DURATION = 5000;   
-
-// Proveedor del contexto
-interface SnackbarProviderProps {
-    children: ReactNode;
-}
 
 export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) => {
     const [snackbar, setSnackbar] = useState<SnackbarState>({

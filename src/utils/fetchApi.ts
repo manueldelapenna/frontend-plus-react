@@ -1,10 +1,4 @@
-import {CoreFunctionParameters} from "backend-plus"
-
-interface FetchApiOptions extends RequestInit {
-  // Puedes extender RequestInit para añadir opciones específicas si es necesario
-  // Por ejemplo, si siempre envías JSON, podrías tener:
-  // body?: Record<string, any>; // Para que el cuerpo sea un objeto que se stringify
-}
+import { FetchApiOptions } from "../types";
 
 /**
  * Función genérica para realizar peticiones a la API.

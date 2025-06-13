@@ -7,17 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store'; // Asegúrate de que la ruta sea correcta
 import { fetchClientContext, clearClientContext } from '../store/clientContextSlice'; // Importa el thunk y la acción
-
-// --- ¡ATENCIÓN! La interfaz AppContextType cambia ---
-// Ahora no contiene clientContext ni setClientContext directamente,
-// ya que se gestionan por Redux.
-interface AppContextType {
-    isLoggedIn: boolean;
-    setIsLoggedIn: (loggedIn: boolean) => void;
-    checkSession: () => Promise<void>;
-    showSessionExpiredMessage: boolean;
-    setShowSessionExpiredMessage: (show: boolean) => void;
-}
+import { AppContextType, AppProviderProps } from '../types';
 
 // Crea el contexto con un valor por defecto que se sobrescribirá
 const AuthContext = createContext<AppContextType | undefined>(undefined);
@@ -32,9 +22,6 @@ export const useApp = () => {
     const clientContext = useSelector((state: RootState) => state.clientContext);
     return { ...context, clientContext };
 };
-interface AppProviderProps {
-    children: ReactNode;
-}
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     console.log("AppProvider rendered/re-rendered");

@@ -20,13 +20,6 @@ import { setDrawerOpen, toggleDrawer } from '../store/menuUiSlice';
 
 const drawerWidth = 240;
 
-// ELIMINAMOS LA INTERFAZ MainLayoutProps si solo contenía 'children'
-// Si MainLayoutProps tenía OTRAS PROPS que usabas, entonces deja la interfaz
-// y borra SÓLO 'children: ReactNode;'
-// interface MainLayoutProps {
-//     children: ReactNode; // ESTO SE ELIMINA O SE HACE OPCIONAL
-// }
-
 // const MainLayout: React.FC<MainLayoutProps> = ({ children }) => { // Quitamos { children }
 const MainLayout: React.FC = () => { // MainLayout ya no recibe 'children' como prop
     const { clientContext } = useApp();

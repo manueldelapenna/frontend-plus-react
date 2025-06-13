@@ -4,18 +4,13 @@ import { TableDefinition, FieldDefinition, DetailTable } from "backend-plus";
 import { fetchApi } from '../utils/fetchApi'; 
 import { CircularProgress, Typography, Box, Alert } from '@mui/material';
 import { quitarGuionesBajos } from '../utils/functions';
+import { GenericDataGridForDetailProps } from '../types';
 
 // Función de utilidad para obtener los valores de la clave primaria
 // Asumiendo que esta función existe y es correcta para tu lógica de negocio
 const getPrimaryKeyValues = (row: any, primaryKey: string[]): string => {
     return primaryKey.map(key => row[key]).join('-');
 };
-
-interface GenericDataGridForDetailProps {
-    parentRow: any; // El tipo de la fila padre
-    detailTableDefinition: DetailTable;
-    parentTableName: string; // Añadido: Propiedad parentTableName
-}
 
 const GenericDataGridForDetail: React.FC<GenericDataGridForDetailProps> = ({
     parentRow,

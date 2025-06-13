@@ -13,11 +13,12 @@ import {
 } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 
-import clientContextReducer, { ClientContextState } from './clientContextSlice';
-import routerReducer, { RouterState } from './routerSlice'; // <--- Asegúrate de importar RouterState
-import menuUiReducer, { MenuUiState } from './menuUiSlice';
+import clientContextReducer from './clientContextSlice';
+import routerReducer from './routerSlice';
+import menuUiReducer from './menuUiSlice';
 
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
+import { ClientContextState, MenuUiState } from '../types';
 
 const rootReducer = combineReducers({
     clientContext: clientContextReducer,

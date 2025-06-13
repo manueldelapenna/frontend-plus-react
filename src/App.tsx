@@ -5,7 +5,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-route
 import MainLayout from './components/MainLayout'; // Asegúrate de que MainLayout tiene <Outlet />
 import SessionExpiredMessage from './components/SessionExpiredMessage';
 import { AppProvider } from './contexts/AppContext'; 
-import GenericDataGrid from './components/GenericDataGrid';
+import GenericDataGrid from './components/grid/GenericDataGrid';
 import HomePage from './pages/HomePage';
 import LogoutPage from './pages/LogoutPage';
 import LoginPage from './pages/LoginPage';

@@ -1,14 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useSnackbar } from '../contexts/SnackbarContext';
 import { executeBackendProcedure as baseExecuteBackendProcedure } from '../utils/fetchApi';
-
-// (BackendResponse no es necesario aquí, como habíamos dicho)
-
-interface UseApiCallResult<T> {
-    callApi: (procedureName: string, params: Record<string, any>) => Promise<T | undefined>;
-    loading: boolean;
-    error: Error | null;
-}
+import { UseApiCallResult } from '../types';
 
 export const useApiCall = <T = any>(): UseApiCallResult<T> => {
     const { showSnackbar } = useSnackbar();

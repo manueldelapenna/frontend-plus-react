@@ -3,10 +3,7 @@ import React, { useEffect, ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAppDispatch, useClientContextStatus } from '../store'; // Importa useDispatch, useClientContextStatus
 import { setRedirectPath } from '../store/routerSlice'; // Importa la acción para guardar la ruta de redirección
-
-interface PrivateRouteProps {
-    children: ReactNode;
-}
+import { PrivateRouteProps } from '../types';
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
     const location = useLocation();

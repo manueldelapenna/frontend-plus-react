@@ -1,9 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
-
-interface SuccessDisplayProps {
-    data: any; // Aquí llegará el resultado real de la llamada a la API
-}
+import { SuccessDisplayProps } from '../../types';
 
 const SuccessDisplay: React.FC<SuccessDisplayProps> = ({ data }) => {
     return (

@@ -16,19 +16,9 @@ import { useApp } from '../contexts/AppContext';
 import { MenuInfoBase, MenuInfoTable, MenuInfoProc, MenuInfoMenu } from "backend-plus";
 import { blue, orange, teal } from '@mui/material/colors';
 
-// Importamos los hooks de Redux y las acciones del nuevo slice
 import { useSubMenuOpenState, useAppDispatch, useAppSelector } from '../store'; // Agregamos useAppSelector
 import { toggleSubMenu, setAllSubMenusOpen } from '../store/menuUiSlice'; // Importamos la nueva acción
-
-interface SideMenuProps {
-    onMenuItemClick?: () => void;
-}
-
-interface MenuListItemProps {
-    item: MenuInfoBase;
-    level: number;
-    onMenuItemClick?: () => void;
-}
+import { MenuListItemProps, SideMenuProps } from '../types';
 
 const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClick }) => {
     const navigate = useNavigate();
