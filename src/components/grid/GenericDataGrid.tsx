@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { DataGrid, Column, DataGridHandle, SelectCellOptions, CellMouseArgs, RenderCellProps, RenderHeaderCellProps } from 'react-data-grid'; 
+import { DataGrid, Column, DataGridHandle, SelectCellOptions, CellMouseArgs, RenderCellProps, RenderHeaderCellProps } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 
 import { useApiCall } from '../../hooks/useApiCall';
@@ -17,55 +17,44 @@ import { useSnackbar } from '../../contexts/SnackbarContext';
 
 import PkHeaderRenderer from './PkHeaderRenderer';
 import PkCellRenderer from './PkCellRenderer';
-// Importa todos los tipos de tu archivo centralizado
-import { 
-    CellFeedback, 
-    FieldDefinition, 
-    TableDefinition, 
-    FilterRendererProps, 
-    InputRendererProps, 
-    ConfirmDialogProps, // Si ConfirmDialog es un componente separado
-    CustomHeaderCellProps, // Si PkHeaderRenderer usa esta prop
-    CustomCellProps // Si PkCellRenderer usa esta prop
-} from '../../types'; // Ajusta la ruta a tu archivo de tipos centralizado
 
-// Si ConfirmDialog es un componente separado que también moviste:
-import { ConfirmDialog } from '../ConfirmDialog'; // Ajusta la ruta si moviste ConfirmDialog a components/grid
+import {
+    CellFeedback,
+    FieldDefinition,
+    TableDefinition,
+    FilterRendererProps,
+    InputRendererProps,
+    ConfirmDialogProps,
+    CustomHeaderCellProps,
+    CustomCellProps
+} from '../../types';
 
-// Si FilterInputRenderer y InputRenderer son componentes separados
-import FilterInputRenderer from './FilterInputRender'; // Ajusta la ruta si moviste FilterInputRenderer
-import InputRenderer from './InputRendered'; // Ajusta la ruta si moviste InputRenderer
+import { ConfirmDialog } from '../ConfirmDialog';
 
-/**
- * Define las props para el componente GenericDataGrid
- */
+import FilterInputRenderer from './FilterInputRender';
+import InputRenderer from './InputRendered';
+
+// *** NUEVA IMPORTACIÓN DEL FALLBACK Y CLIENT SIDE RENDERERS ***
+import { clientSideRenderers, ClientSideRendererProps } from './clientSideRenderers';
+import FallbackClientSideRenderer from './FallbackClientSideRenderer'; // Importa el FallbackRenderer directamente
+
 interface GenericDataGridProps {
-    tableName: string; // ¡Ahora tableName es una prop!
+    tableName: string;
 }
 
-/**
- * Genera una cadena única para identificar una fila basándose en sus valores de clave primaria.
- * Esto es crucial para `react-data-grid` y `ReadonlySet` de `selectedRows`.
- * Si la clave primaria es compuesta, los valores se concatenan con un separador.
- * @param row La fila de datos.
- * @param primaryKey Un array de nombres de campos que componen la clave primaria.
- * @returns Una cadena única que identifica la fila.
- */
 export const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string[]): string => {
     return primaryKey
         .map(key => {
             return row[key] !== undefined && row[key] !== null
                 ? String(row[key])
-                : 'NULL_OR_UNDEFINED'; // Usar un indicador para nulos o indefinidos en PK
+                : 'NULL_OR_UNDEFINED';
         })
         .join('|');
 };
 
-export const NEW_ROW_INDICATOR = '.$new'; // Indicador para nuevas filas que aún no están en la base de datos
+export const NEW_ROW_INDICATOR = '.$new';
 
-const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // Recibe tableName de las props
-    // Ya no necesitas obtener tableName de useParams aquí
-    // const { tableName } = useParams<{ tableName?: string }>();
+const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
     const [tableData, setTableData] = useState<any[]>([]);
     const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
@@ -75,10 +64,8 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
     const [localCellChanges, setLocalCellChanges] = useState<Map<string, Set<string>>>(new Map());
     const theme = useTheme();
 
-    // Estados para el diálogo de confirmación
     const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
     const [rowToDelete, setRowToDelete] = useState<any | null>(null);
-    // Nuevo estado para controlar las filas que están en proceso de transición de salida
     const [exitingRowIds, setExitingRowIds] = useState<Set<string>>(new Set());
 
     const { showSuccess, showError, showWarning, showInfo } = useSnackbar();
@@ -87,7 +74,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
     const dataGridRef = useRef<DataGridHandle>(null);
     const { callApi, loading, error } = useApiCall();
 
-    // Reinicia estados al cambiar el nombre de la tabla
     useEffect(() => {
         setFilters({});
         setIsFilterRowVisible(false);
@@ -96,35 +82,29 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
         setTableData([]);
         setCellFeedback(null);
         setLocalCellChanges(new Map());
-        setOpenConfirmDialog(false); // Resetear confirmación
-        setRowToDelete(null); // Resetear fila a borrar
-        setExitingRowIds(new Set()); // Resetear filas en transición
+        setOpenConfirmDialog(false);
+        setRowToDelete(null);
+        setExitingRowIds(new Set());
         if (feedbackTimerRef.current) {
             clearTimeout(feedbackTimerRef.current);
         }
-    }, [tableName]); // El efecto se dispara cuando tableName cambia
+    }, [tableName]);
 
-    // Lógica de carga de datos y definición de la tabla
     useEffect(() => {
-        // Ya no necesitas esta validación aquí, el GenericDataGridPage se encarga de ella.
-        // if (!tableName) {
-        //     showError("Nombre de tabla no especificado en la URL.");
-        //     return;
-        // }
         const fetchDataAndDefinition = async () => {
             try {
-                const definition: TableDefinition = await callApi('table_structure',{table:tableName});
+                const definition: TableDefinition = await callApi('table_structure', { table: tableName });
                 setTableDefinition(definition);
-                const data = await callApi('table_data',{table:tableName});
+                const data = await callApi('table_data', { table: tableName });
                 setTableData(data);
             } catch (err: any) {
                 setTableDefinition(null);
                 setTableData([]);
-                showError(`Error al cargar datos para la tabla '${tableName}': ${err.message || 'Error desconocido'}`); // Mostrar error
-            } finally {}
+                showError(`Error al cargar datos para la tabla '${tableName}': ${err.message || 'Error desconocido'}`);
+            } finally { }
         };
         fetchDataAndDefinition();
-    }, [tableName, showError]); // `error` de useApiCall no es una dependencia aquí, ya lo manejamos con `showError`
+    }, [tableName, showError]);
 
     useEffect(() => {
         if (cellFeedback) {
@@ -212,49 +192,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
 
         const rowId = getPrimaryKeyValues(rowToDelete, primaryKey);
 
-        // Paso 1: Marcar la fila para iniciar la transición de salida
-        // Agrega la fila a exitingRowIds. Esto aplicará los estilos de transición
         setExitingRowIds(prev => new Set(prev).add(rowId));
 
-        // Permite un pequeño retraso para que el navegador aplique los estilos iniciales
-        // y luego active la transición a `max-height: 0` y `opacity: 0`.
-        // La duración de este setTimeout (ej. 10ms) es crítica para que la transición se "enganche".
         setTimeout(async () => {
-            // Si es una fila nueva, elimínala solo localmente
             if (rowToDelete[NEW_ROW_INDICATOR]) {
-                setTimeout(() => { // Este setTimeout coincide con la duración de la transición CSS
-                    setTableData(prevData => prevData.filter(row => getPrimaryKeyValues(row, primaryKey) !== rowId));
-                    setLocalCellChanges(prev => {
-                        const newMap = new Map(prev);
-                        newMap.delete(rowId);
-                        return newMap;
-                    });
-                    setSelectedRows(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(rowId);
-                        return newSet;
-                    });
-                    setExitingRowIds(prev => { // Quitar de las filas en transición
-                        const newSet = new Set(prev);
-                        newSet.delete(rowId);
-                        return newSet;
-                    });
-                    showInfo(`Fila no guardada '${rowId}' eliminada localmente.`);
-                    setRowToDelete(null);
-                }, 500); // Duración de la transición CSS
-                return;
-            }
-
-            // Si es una fila persistida, intenta eliminarla del backend
-            try {
-                const primaryKeyValues = tableDefinition.primaryKey.map((key)=> rowToDelete[key]);
-                await callApi('table_record_delete', {
-                    table:tableName,
-                    primaryKeyValues:primaryKeyValues
-                });
-
-                console.log(`Fila con ID ${rowId} eliminada exitosamente del backend.`);
-                // Permitir un breve momento para la transición visual
                 setTimeout(() => {
                     setTableData(prevData => prevData.filter(row => getPrimaryKeyValues(row, primaryKey) !== rowId));
                     setLocalCellChanges(prev => {
@@ -267,26 +208,57 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                         newSet.delete(rowId);
                         return newSet;
                     });
-                    setExitingRowIds(prev => { // Quitar de las filas en transición
+                    setExitingRowIds(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    showInfo(`Fila no guardada '${rowId}' eliminada localmente.`);
+                    setRowToDelete(null);
+                }, 500);
+                return;
+            }
+
+            try {
+                const primaryKeyValues = tableDefinition.primaryKey.map((key) => rowToDelete[key]);
+                await callApi('table_record_delete', {
+                    table: tableName,
+                    primaryKeyValues: primaryKeyValues
+                });
+
+                console.log(`Fila con ID ${rowId} eliminada exitosamente del backend.`);
+                setTimeout(() => {
+                    setTableData(prevData => prevData.filter(row => getPrimaryKeyValues(row, primaryKey) !== rowId));
+                    setLocalCellChanges(prev => {
+                        const newMap = new Map(prev);
+                        newMap.delete(rowId);
+                        return newMap;
+                    });
+                    setSelectedRows(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(rowId);
+                        return newSet;
+                    });
+                    setExitingRowIds(prev => {
                         const newSet = new Set(prev);
                         newSet.delete(rowId);
                         return newSet;
                     });
                     showSuccess(`Fila '${rowId}' eliminada exitosamente.`);
                     setRowToDelete(null);
-                }, 500); // Duración de la transición CSS
+                }, 500);
 
             } catch (err: any) {
                 console.error(`Error al eliminar la fila '${rowId}':`, err);
-                showError(`Error al eliminar la fila '${rowId}': ${err.message || 'Error desconocido'}`); // Muestra el error
-                setExitingRowIds(prev => { // Quitar de las filas en transición en caso de error
+                showError(`Error al eliminar la fila '${rowId}': ${err.message || 'Error desconocido'}`);
+                setExitingRowIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(rowId);
                     return newSet;
                 });
                 setRowToDelete(null);
             }
-        }, 10); // Un pequeño retraso para que la transición se active
+        }, 10);
     }, [rowToDelete, tableDefinition, tableName, primaryKey, showInfo, showSuccess, showError, showWarning, setTableData, setLocalCellChanges, setSelectedRows]);
 
 
@@ -367,8 +339,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                 flexGrow: 1,
                 minWidth: 60,
                 isPK: field.isPk,
-                // Usando CustomHeaderCellProps aquí para el tipado
-                renderHeaderCell: (props: RenderHeaderCellProps<any, any>) => <PkHeaderRenderer {...props} />, 
+                renderHeaderCell: (props: RenderHeaderCellProps<any, any>) => <PkHeaderRenderer {...props} />,
                 renderSummaryCell: ({ column }) => {
                     return isFilterRowVisible ? (
                         <FilterInputRenderer
@@ -378,11 +349,36 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                         />
                     ) : null;
                 },
-                // Usando CustomCellProps aquí para el tipado
-                renderCell: (props: RenderCellProps<any, any>) => { 
+                renderCell: (props: RenderCellProps<any, any>) => {
                     const rowId = getPrimaryKeyValues(props.row, primaryKey);
-                    
-                    // Lógica para resaltar celdas con feedback o cambios locales
+                    const fieldDefinition = tableDefinition.fields.find(f => f.name === props.column.key);
+
+                    // Lógica para renderizado clientSide
+                    if (fieldDefinition?.clientSide) {
+                        const ClientSideComponent = clientSideRenderers[fieldDefinition.clientSide];
+                        if (ClientSideComponent) {
+                            return (
+                                <ClientSideComponent
+                                    {...props}
+                                    fieldDefinition={fieldDefinition}
+                                    tableDefinition={tableDefinition}
+                                    primaryKey={primaryKey}
+                                />
+                            );
+                        } else {
+                            // *** RENDERIZADO DEL FALLBACK SI EL COMPONENTE NO SE ENCUENTRA ***
+                            return (
+                                <FallbackClientSideRenderer
+                                    {...props}
+                                    fieldDefinition={fieldDefinition}
+                                    tableDefinition={tableDefinition}
+                                    primaryKey={primaryKey}
+                                />
+                            );
+                        }
+                    }
+
+                    // Lógica existente para resaltar celdas con feedback o cambios locales
                     let cellBackgroundColor = 'transparent';
                     if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.columnKey === props.column.key) {
                         cellBackgroundColor = cellFeedback.type === 'error' ? theme.palette.error.light : theme.palette.success.light;
@@ -390,7 +386,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                         const isNewRowLocalCheck = props.row[NEW_ROW_INDICATOR];
                         const isMandatory = tableDefinition.primaryKey.includes(props.column.key) || (tableDefinition.fields.find(f => f.name === props.column.key)?.nullable === false);
                         const hasValue = props.row[props.column.key] !== null && props.row[props.column.key] !== undefined && String(props.row[props.column.key]).trim() !== '';
-                        
+
                         if ((isNewRowLocalCheck && isMandatory && !hasValue) || (localCellChanges.has(rowId) && localCellChanges.get(rowId)?.has(props.column.key))) {
                             cellBackgroundColor = theme.palette.info.light;
                         }
@@ -429,7 +425,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
             resizable: false,
             sortable: false,
             frozen: true,
-            // Header renderer de aquí no usa PkHeaderRenderer, es específico
             renderHeaderCell: () => (
                 <IconButton
                     color="inherit"
@@ -446,12 +441,12 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
 
         const deleteActionColumn: Column<any> = {
             key: 'deleteAction',
-            name: '', // Nombre vacío para el encabezado
-            width: 50, // Ancho ligeramente más grande para el botón sin texto
+            name: '',
+            width: 50,
             resizable: false,
             sortable: false,
             frozen: true,
-            renderHeaderCell: () => null, // No mostrar texto en el encabezado
+            renderHeaderCell: () => null,
             renderSummaryCell: () => null,
             renderCell: ({ row }) => {
                 if (!tableDefinition.allow?.delete) {
@@ -463,16 +458,16 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                             variant="outlined"
                             color="error"
                             size="small"
-                            onClick={() => handleDeleteRow(row)} // Llama a la función que abre el diálogo
+                            onClick={() => handleDeleteRow(row)}
                             title="Eliminar fila"
                             sx={{
-                                minWidth: 35, // Ajusta el ancho mínimo para el botón
-                                height: 30, // Ajusta la altura
-                                p: 0.5, // Reduce el padding si es necesario
-                                '& .MuiButton-startIcon': { m: 0 } // Elimina el margen del icono si no hay texto
+                                minWidth: 35,
+                                height: 30,
+                                p: 0.5,
+                                '& .MuiButton-startIcon': { m: 0 }
                             }}
                         >
-                            <DeleteIcon sx={{ fontSize: 18 }} /> {/* Icono más grande para ser el único elemento */}
+                            <DeleteIcon sx={{ fontSize: 18 }} />
                         </Button>
                     </Box>
                 );
@@ -562,11 +557,11 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                 <Typography variant="h4" gutterBottom sx={{ m: 0 }}>
                     {cambiarGuionesBajosPorEspacios(tableDefinition.title || tableDefinition.name)}
                 </Typography>
-                
+
             </Box>
             {tableDefinition.allow?.insert && (
-                <Box sx={{ display: 'flex', px:2 }}>
-                
+                <Box sx={{ display: 'flex', px: 2 }}>
+
                     <Button
                         variant="contained"
                         onClick={handleAddRow}
@@ -576,14 +571,14 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                     </Button>
                 </Box>
             )}
-            <Box sx={{px:2, pt:2, pb: 1, fontSize: '0.9rem'}}>
-                {filteredRows.length == tableData.length?
+            <Box sx={{ px: 2, pt: 2, pb: 1, fontSize: '0.9rem' }}>
+                {filteredRows.length == tableData.length ?
                     <Box>mostrando {`${tableData.length} registros`}</Box>
-                :<>
-                    <Box>mostrando {`${filteredRows.length} registros filtrados`}</Box>
-                </>}
+                    : <>
+                        <Box>mostrando {`${filteredRows.length} registros filtrados`}</Box>
+                    </>}
             </Box>
-            
+
             <Box
                 sx={{
                     flexGrow: showNoRowsMessage ? 0 : 1,
@@ -601,20 +596,15 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                     columns={columns}
                     rows={filteredRows.map(row => ({
                         ...row,
-                        // Aquí aplicamos los estilos inline para la transición
-                        // Si la fila está en exitingRowIds, establecerá max-height: 0 y opacity: 0
-                        // Si no, establecerá un max-height adecuado (ej. 35px, la altura por defecto de la fila)
-                        // y opacity: 1. La transición en el CSS manejará la animación.
                         style: exitingRowIds.has(getPrimaryKeyValues(row, primaryKey))
-                            ? { maxHeight: 0, opacity: 0, overflow: 'hidden' } // Oculta contenido si se "desliza"
-                            : { maxHeight: '35px', opacity: 1 } // Altura normal de la fila de react-data-grid
+                            ? { maxHeight: 0, opacity: 0, overflow: 'hidden' }
+                            : { maxHeight: '35px', opacity: 1 }
                     }))}
                     enableVirtualization={true}
                     rowKeyGetter={(row: any) => getPrimaryKeyValues(row, primaryKey)}
                     onSelectedRowsChange={setSelectedRows}
                     onRowsChange={handleRowsChange}
                     selectedRows={selectedRows}
-                    // La altura de la fila se gestionará con maxHeight y la transición
                     rowHeight={(row) => exitingRowIds.has(getPrimaryKeyValues(row, primaryKey)) ? 0 : 35}
                     style={{ height: '100%', width: '100%', boxSizing: 'border-box' }}
                     headerRowHeight={35}
@@ -645,7 +635,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => { // 
                 )}
             </Box>
 
-            {/* Diálogo de Confirmación */}
             <ConfirmDialog
                 open={openConfirmDialog}
                 onClose={handleConfirmDelete}
