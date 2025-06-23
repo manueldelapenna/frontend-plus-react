@@ -1,4 +1,3 @@
-// src/components/SideMenu.tsx
 import React from 'react';
 import { List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider, Box, Typography, Collapse } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
@@ -7,6 +6,8 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import FolderIcon from '@mui/icons-material/Folder';
 import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from '@mui/icons-material/Home';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows'; // Icono para wScreens
 // Importamos los íconos para expandir/colapsar todo
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -14,11 +15,16 @@ import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { MenuInfoBase, MenuInfoTable, MenuInfoProc, MenuInfoMenu } from "backend-plus";
-import { blue, orange, teal } from '@mui/material/colors';
+import { blue, orange, teal, red, grey } from '@mui/material/colors';
 
-import { useSubMenuOpenState, useAppDispatch, useAppSelector } from '../store'; // Agregamos useAppSelector
-import { toggleSubMenu, setAllSubMenusOpen } from '../store/menuUiSlice'; // Importamos la nueva acción
-import { MenuListItemProps, SideMenuProps } from '../types';
+import { useSubMenuOpenState, useAppDispatch, useAppSelector } from '../store';
+import { toggleSubMenu, setAllSubMenusOpen } from '../store/menuUiSlice';
+// Asegúrate de que MenuListItemProps y SideMenuProps estén definidos e importados correctamente
+import { MenuListItemProps, SideMenuProps } from '../types'; // <--- VERIFICA ESTA RUTA Y DEFINICIÓN
+
+// NUEVAS IMPORTACIONES PARA WSCREENS
+import { wScreens } from '../pages/WScreens'; // Asegúrate de que la ruta sea correcta
+
 
 const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClick }) => {
     const navigate = useNavigate();
@@ -45,6 +51,17 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
                 }
             } else if (item.menuType === "proc") {
                 path = `/procedures/${item.name}`;
+            } else {
+                // *** CORRECCIÓN PARA TS2774 ***
+                const WScreenComponent = wScreens[item.menuType];
+                if (WScreenComponent !== undefined) { // <-- Explícitamente verificar que NO es undefined
+                    path = `/wScreens/${item.menuType}`; // Ruta para wScreens implementadas
+                } else {
+                    // Si el menuType no es reconocido y no hay un componente mapeado
+                    // Redirigimos a la ruta de fallback genérica
+                    path = `/wScreens-fallback/${item.menuType}`;
+                    console.warn(`Menu type '${item.menuType}' no reconocido o WScreen no mapeada.`);
+                }
             }
             if (path) {
                 navigate(path);
@@ -63,7 +80,15 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
                 return <DnsIcon sx={{ color: teal[700] }} />;
             case "menu":
                 return <FolderIcon sx={{ color: orange[800] }} />;
-            default: return null;
+            default:
+                // Si no es un tipo conocido, lo consideramos una 'wScreen'
+                // *** CORRECCIÓN PARA TS2774 ***
+                const WScreenComponent = wScreens[item.menuType];
+                if (WScreenComponent !== undefined) { // <-- Explícitamente verificar que NO es undefined
+                    return <DesktopWindowsIcon sx={{ color: grey[700] }} />; // Icono genérico para wScreens
+                }
+                // Si no es una wScreen mapeada, mostramos advertencia
+                return <WarningAmberIcon sx={{ color: red[500] }} />; // Icono de advertencia para no reconocido
         }
     };
 
@@ -75,6 +100,9 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
         isSelected = currentPath.startsWith(`/table/${tableName}`);
     } else if (item.menuType === "proc") {
         isSelected = currentPath === `/procedures/${item.name}`;
+    } else {
+        // Lógica para selección de wScreens y su fallback
+        isSelected = currentPath.startsWith(`/wScreens/${item.menuType}`) || currentPath.startsWith(`/wScreens-fallback/${item.menuType}`);
     }
 
     return (
@@ -109,17 +137,15 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
 };
 
 
+// Asegúrate de que SideMenuProps esté definido e importado
 const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => {
     const { clientContext } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
-    const dispatch = useAppDispatch(); // Obtener el dispatch para la nueva acción
+    const dispatch = useAppDispatch();
 
-    // Selecciona el estado de todos los submenús para determinar si la mayoría están abiertos
     const subMenuOpenStates = useAppSelector(state => state.menuUi.subMenuOpenStates);
 
-    // Determinar si la mayoría de los submenús están abiertos para mostrar el ícono correcto
-    // Esto es una heurística simple; puedes ajustarla según tu necesidad.
     const allSubMenusKeys = Object.keys(subMenuOpenStates);
     const openSubMenusCount = allSubMenusKeys.filter(key => subMenuOpenStates[key]).length;
     const isMostlyOpen = allSubMenusKeys.length > 0 && openSubMenusCount / allSubMenusKeys.length > 0.5;
@@ -131,9 +157,7 @@ const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => {
         }
     };
 
-    // --- NUEVO MANEJADOR para colapsar/expandir todo ---
     const handleToggleAllSubMenus = () => {
-        // Despacha la acción para abrir o cerrar todos los submenús
         dispatch(setAllSubMenusOpen(!isMostlyOpen));
     };
 
@@ -170,7 +194,6 @@ const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => {
                     </ListItemButton>
                 </ListItem>
                 <Divider />
-                {/* Renderizar los elementos de menú principales */}
                 {clientContext.menu.map((menuItem: MenuInfoBase) => (
                     <MenuListItem
                         key={menuItem.name}
