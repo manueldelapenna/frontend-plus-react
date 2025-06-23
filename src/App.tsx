@@ -20,6 +20,7 @@ import { setCurrentPath } from './store/routerSlice';
 
 import { SnackbarProvider } from './contexts/SnackbarContext';
 import GenericDataGridPage from './pages/GenericDataGridPage';
+import MenuTablePage from './pages/MenuTablePage';
 
 // *** NUEVAS IMPORTACIONES PARA WSCREENS (Asegúrate de que la ruta sea correcta) ***
 import { wScreens, WScreenProps } from './pages/WScreens'; // Importa el mapeo de wScreens
@@ -52,10 +53,8 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
                 <Route path="/table/:tableName" element={<GenericDataGridPage />} />
+                <Route path="/menu/:menuName" element={<MenuTablePage  />} />
                 <Route path="/procedures/:procedureName" element={<ProcedureForm />} />
-
-                {/* --- NUEVAS RUTAS PARA WSCREENS --- */}
-                {/* Iteramos sobre el objeto wScreens para crear una ruta para cada componente de wScreen. */}
                 {Object.keys(wScreens).map((screenName) => (
                     <Route
                         key={screenName}
@@ -63,18 +62,10 @@ function App() {
                         element={React.createElement(wScreens[screenName], { screenName } as WScreenProps)}
                     />
                 ))}
-
-                {/*
-                    Ruta de fallback genérica para cualquier WScreen no implementada.
-                    El SideMenu dirigirá aquí si el menuType no está mapeado.
-                    Captura el screenName para mostrarlo en el mensaje de error.
-                */}
                 <Route
                     path="/wScreens-fallback/:screenName"
                     element={<FallbackWScreen screenName=":screenName" />}
                 />
-                {/* --- FIN NUEVAS RUTAS --- */}
-
                 <Route path="*" element={<div style={{ marginTop: '20px', marginLeft: "10px" }}>404 - Recurso No Encontrado</div>} />
             </Route>
 

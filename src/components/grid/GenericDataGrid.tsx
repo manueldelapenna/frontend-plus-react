@@ -34,12 +34,12 @@ import { ConfirmDialog } from '../ConfirmDialog';
 import FilterInputRenderer from './FilterInputRender';
 import InputRenderer from './InputRendered';
 
-// *** NUEVA IMPORTACIÓN DEL FALLBACK Y CLIENT SIDE RENDERERS ***
 import { clientSideRenderers, ClientSideRendererProps } from './clientSideRenderers';
-import FallbackClientSideRenderer from './FallbackClientSideRenderer'; // Importa el FallbackRenderer directamente
+import FallbackClientSideRenderer from './FallbackClientSideRenderer';
 
 interface GenericDataGridProps {
     tableName: string;
+    fixedFields?: Record<string, any>; // Tipo para los campos fijos
 }
 
 export const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string[]): string => {
@@ -54,7 +54,10 @@ export const getPrimaryKeyValues = (row: Record<string, any>, primaryKey: string
 
 export const NEW_ROW_INDICATOR = '.$new';
 
-const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
+const GenericDataGrid: React.FC<GenericDataGridProps> = ({
+    tableName,
+    fixedFields
+}) => {
     const [tableDefinition, setTableDefinition] = useState<TableDefinition | null>(null);
     const [tableData, setTableData] = useState<any[]>([]);
     const [isFilterRowVisible, setIsFilterRowVisible] = useState<boolean>(false);
@@ -95,7 +98,14 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
             try {
                 const definition: TableDefinition = await callApi('table_structure', { table: tableName });
                 setTableDefinition(definition);
-                const data = await callApi('table_data', { table: tableName });
+
+                // --- MODIFICACIÓN CLAVE AQUÍ ---
+                const data = await callApi('table_data', {
+                    table: tableName,
+                    fixedFields: fixedFields // Envía los fixedFields a la API
+                });
+                // --- FIN MODIFICACIÓN CLAVE ---
+
                 setTableData(data);
             } catch (err: any) {
                 setTableDefinition(null);
@@ -104,7 +114,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
             } finally { }
         };
         fetchDataAndDefinition();
-    }, [tableName, showError]);
+    }, [tableName, fixedFields, showError]);
 
     useEffect(() => {
         if (cellFeedback) {
@@ -149,6 +159,13 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
         });
         newRow[NEW_ROW_INDICATOR] = true;
 
+        // Si hay fixedFields, los aplica a la nueva fila para que el usuario los vea
+        if (fixedFields) {
+            Object.entries(fixedFields).forEach(([key, value]) => {
+                newRow[key] = value;
+            });
+        }
+
         setTableData(prevData => [newRow, ...prevData]);
         setSelectedRows(new Set());
 
@@ -169,7 +186,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
             return newMap;
         });
 
-    }, [tableDefinition, showWarning, primaryKey]);
+    }, [tableDefinition, showWarning, primaryKey, fixedFields]); // Añade fixedFields como dependencia
 
     const handleDeleteRow = useCallback(async (row: any) => {
         setRowToDelete(row);
@@ -329,18 +346,24 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
         if (!tableDefinition) return [];
 
         const defaultColumns: Column<any>[] = tableDefinition.fields.map((field: FieldDefinition) => {
-            const isFieldEditable = field.editable !== false;
+            // Determinar si el campo está fijo y no es editable
+            const isFixedField = fixedFields && Object.keys(fixedFields).includes(field.name);
+            const isFieldEditable = field.editable !== false && !isFixedField; // Un campo fijo no es editable por el usuario
+
             return {
                 key: field.name,
                 name: field.label || cambiarGuionesBajosPorEspacios(field.name),
                 resizable: true,
                 sortable: true,
-                editable: isFieldEditable,
+                editable: isFieldEditable, // Usar la nueva bandera de editable
                 flexGrow: 1,
                 minWidth: 60,
                 isPK: field.isPk,
                 renderHeaderCell: (props: RenderHeaderCellProps<any, any>) => <PkHeaderRenderer {...props} />,
                 renderSummaryCell: ({ column }) => {
+                    // Si el campo es fijo, no debe aparecer en los filtros
+                    if (isFixedField) return null;
+
                     return isFilterRowVisible ? (
                         <FilterInputRenderer
                             column={column}
@@ -366,7 +389,6 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
                                 />
                             );
                         } else {
-                            // *** RENDERIZADO DEL FALLBACK SI EL COMPONENTE NO SE ENCUENTRA ***
                             return (
                                 <FallbackClientSideRenderer
                                     {...props}
@@ -378,7 +400,7 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
                         }
                     }
 
-                    // Lógica existente para resaltar celdas con feedback o cambios locales
+                    // Lógica para resaltar celdas con feedback o cambios locales
                     let cellBackgroundColor = 'transparent';
                     if (cellFeedback && cellFeedback.rowId === rowId && cellFeedback.columnKey === props.column.key) {
                         cellBackgroundColor = cellFeedback.type === 'error' ? theme.palette.error.light : theme.palette.success.light;
@@ -387,7 +409,10 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
                         const isMandatory = tableDefinition.primaryKey.includes(props.column.key) || (tableDefinition.fields.find(f => f.name === props.column.key)?.nullable === false);
                         const hasValue = props.row[props.column.key] !== null && props.row[props.column.key] !== undefined && String(props.row[props.column.key]).trim() !== '';
 
-                        if ((isNewRowLocalCheck && isMandatory && !hasValue) || (localCellChanges.has(rowId) && localCellChanges.get(rowId)?.has(props.column.key))) {
+                        // Resalta campos fijos con un color diferente para distinguirlos
+                        if (isFixedField) {
+                             cellBackgroundColor = theme.palette.action.selected; // Un gris claro o similar
+                        } else if ((isNewRowLocalCheck && isMandatory && !hasValue) || (localCellChanges.has(rowId) && localCellChanges.get(rowId)?.has(props.column.key))) {
                             cellBackgroundColor = theme.palette.info.light;
                         }
                     }
@@ -477,14 +502,19 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
         const allColumns = [filterToggleColumn, deleteActionColumn, ...defaultColumns];
 
         return allColumns.map(col => {
-            if (col.editable) {
+            if (col.editable) { // Solo si la columna es editable en primer lugar
+                const fieldDefinition = tableDefinition.fields.find(f => f.name === col.key);
+                const isFixedField = fixedFields && Object.keys(fixedFields).includes(col.key);
+                const isFieldEditableByUI = fieldDefinition?.editable !== false && !isFixedField; // No editable si es fijo
+
+                if (!isFieldEditableByUI) {
+                    // Si el campo no es editable por UI (ej. por ser fijo), no renderizamos el editor
+                    return { ...col, renderEditCell: undefined };
+                }
+
                 return {
                     ...col,
                     renderEditCell: (props) => {
-                        const fieldDefinition = tableDefinition.fields.find(f => f.name === props.column.key);
-                        const isFieldEditable = fieldDefinition?.editable !== false;
-                        if (!isFieldEditable) return null;
-
                         return (
                             <InputRenderer
                                 {...props}
@@ -506,8 +536,9 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
     }, [
         tableDefinition, isFilterRowVisible, filters, toggleFilterVisibility,
         cellFeedback, primaryKey, theme.palette.success.light, theme.palette.error.light,
-        theme.palette.info.light, handleEnterKeyPressInEditor, setTableData,
-        localCellChanges, handleDeleteRow
+        theme.palette.info.light, theme.palette.action.selected, // Añade el color de campos fijos
+        handleEnterKeyPressInEditor, setTableData,
+        localCellChanges, handleDeleteRow, fixedFields // Añade fixedFields como dependencia
     ]);
 
     const showNoRowsMessage = filteredRows.length === 0 && !loading && !error;
@@ -518,12 +549,14 @@ const GenericDataGrid: React.FC<GenericDataGridProps> = ({ tableName }) => {
 
     const handleCellClick = useCallback((args: CellMouseArgs<any, { id: string }>) => {
         const fieldDefinition = tableDefinition?.fields.find(f => f.name === args.column.key);
-        const isEditable = fieldDefinition?.editable !== false;
+        // La editabilidad también considera si es un campo fijo
+        const isFixedField = fixedFields && Object.keys(fixedFields).includes(args.column.key);
+        const isEditable = fieldDefinition?.editable !== false && !isFixedField;
 
         console.log("Clicked column index:", args.column.idx);
         console.log("Clicked row index:", args.rowIdx);
         console.log("Is editable:", isEditable);
-    }, [tableDefinition]);
+    }, [tableDefinition, fixedFields]); // Añade fixedFields como dependencia
 
 
     if (loading) {

@@ -7,8 +7,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from '@mui/icons-material/Home';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows'; // Icono para wScreens
-// Importamos los íconos para expandir/colapsar todo
+import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 
@@ -19,11 +18,9 @@ import { blue, orange, teal, red, grey } from '@mui/material/colors';
 
 import { useSubMenuOpenState, useAppDispatch, useAppSelector } from '../store';
 import { toggleSubMenu, setAllSubMenusOpen } from '../store/menuUiSlice';
-// Asegúrate de que MenuListItemProps y SideMenuProps estén definidos e importados correctamente
-import { MenuListItemProps, SideMenuProps } from '../types'; // <--- VERIFICA ESTA RUTA Y DEFINICIÓN
+import { MenuListItemProps, SideMenuProps } from '../types';
 
-// NUEVAS IMPORTACIONES PARA WSCREENS
-import { wScreens } from '../pages/WScreens'; // Asegúrate de que la ruta sea correcta
+import { wScreens } from '../pages/WScreens';
 
 
 const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClick }) => {
@@ -38,13 +35,19 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
             dispatch(toggleSubMenu(item.name));
         } else {
             let path = '';
+            const queryParams = new URLSearchParams();
+
             if (item.menuType === "table") {
-                const tableName = (item as MenuInfoTable).table || item.name;
-                path = `/table/${tableName}`;
-                const queryParams = new URLSearchParams();
-                if (item.ff) queryParams.append('ff', JSON.stringify((item.ff)));
+                // Todas las tablas del menú navegan a esta ruta uniforme
+                path = `/menu/${item.name}`; 
+                
+                // Los parámetros td y fc siguen siendo query params
                 if (item.td) queryParams.append('td', JSON.stringify((item.td)));
                 if (item.fc) queryParams.append('fc', JSON.stringify((item.fc)));
+
+                // NOTA: Los `fixedFields` (item.ff) NO se pasan en los queryParams aquí.
+                // Se espera que GenericDataGridPage los obtenga directamente desde clientContext.menu
+                // usando el `item.name` que está en la URL (`:menuName`).
 
                 if (queryParams.toString()) {
                     path = `${path}?${queryParams.toString()}`;
@@ -52,17 +55,15 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
             } else if (item.menuType === "proc") {
                 path = `/procedures/${item.name}`;
             } else {
-                // *** CORRECCIÓN PARA TS2774 ***
                 const WScreenComponent = wScreens[item.menuType];
-                if (WScreenComponent !== undefined) { // <-- Explícitamente verificar que NO es undefined
-                    path = `/wScreens/${item.menuType}`; // Ruta para wScreens implementadas
+                if (WScreenComponent !== undefined) {
+                    path = `/wScreens/${item.menuType}`;
                 } else {
-                    // Si el menuType no es reconocido y no hay un componente mapeado
-                    // Redirigimos a la ruta de fallback genérica
                     path = `/wScreens-fallback/${item.menuType}`;
                     console.warn(`Menu type '${item.menuType}' no reconocido o WScreen no mapeada.`);
                 }
             }
+            
             if (path) {
                 navigate(path);
             }
@@ -81,14 +82,11 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
             case "menu":
                 return <FolderIcon sx={{ color: orange[800] }} />;
             default:
-                // Si no es un tipo conocido, lo consideramos una 'wScreen'
-                // *** CORRECCIÓN PARA TS2774 ***
                 const WScreenComponent = wScreens[item.menuType];
-                if (WScreenComponent !== undefined) { // <-- Explícitamente verificar que NO es undefined
-                    return <DesktopWindowsIcon sx={{ color: grey[700] }} />; // Icono genérico para wScreens
+                if (WScreenComponent !== undefined) {
+                    return <DesktopWindowsIcon sx={{ color: grey[700] }} />;
                 }
-                // Si no es una wScreen mapeada, mostramos advertencia
-                return <WarningAmberIcon sx={{ color: red[500] }} />; // Icono de advertencia para no reconocido
+                return <WarningAmberIcon sx={{ color: red[500] }} />;
         }
     };
 
@@ -96,12 +94,11 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
     let isSelected = false;
 
     if (item.menuType === "table") {
-        const tableName = (item as MenuInfoTable).table || item.name;
-        isSelected = currentPath.startsWith(`/table/${tableName}`);
+        // La selección ahora siempre se basa en la ruta /menu/table/:name para los ítems de tabla
+        isSelected = currentPath === `/menu/table/${item.name}`;
     } else if (item.menuType === "proc") {
         isSelected = currentPath === `/procedures/${item.name}`;
     } else {
-        // Lógica para selección de wScreens y su fallback
         isSelected = currentPath.startsWith(`/wScreens/${item.menuType}`) || currentPath.startsWith(`/wScreens-fallback/${item.menuType}`);
     }
 
@@ -137,7 +134,6 @@ const MenuListItem: React.FC<MenuListItemProps> = ({ item, level, onMenuItemClic
 };
 
 
-// Asegúrate de que SideMenuProps esté definido e importado
 const SideMenu: React.FC<SideMenuProps> = ({ onMenuItemClick }) => {
     const { clientContext } = useApp();
     const navigate = useNavigate();

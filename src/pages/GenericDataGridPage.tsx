@@ -20,7 +20,7 @@ const GenericDataGridPage: React.FC = () => {
     }
 
     // Pasa tableName como prop al GenericDataGrid
-    return <GenericDataGrid tableName={tableName} />;
+    return <GenericDataGrid tableName={tableName} fixedFields={[]} />;
 };
 
 export default GenericDataGridPage;
