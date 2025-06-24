@@ -36,7 +36,7 @@ const LocationTracker: React.FC = () => {
     return null;
 };
 
-function App() {
+export function FrontendPlusReactRoutes() {
     console.log("¡El componente App se está renderizando!");
 
     return (
@@ -74,7 +74,7 @@ function App() {
     );
 }
 
-const RootApp = () => {
+const App = () => {
     return (
         <Provider store={store}>
             <PersistGate loading={null} persistor={persistor}>
@@ -82,7 +82,7 @@ const RootApp = () => {
                     <LocationTracker />
                     <AppProvider>
                         <SnackbarProvider>
-                            <App />
+                            <FrontendPlusReactRoutes />
                             <SessionExpiredMessage />
                         </SnackbarProvider>
                     </AppProvider>
@@ -92,4 +92,4 @@ const RootApp = () => {
     );
 }
 
-export default RootApp;
+export default App;
